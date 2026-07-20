@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Control Panel</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 300px; border: 1px solid #334155; }
+        button { width: 100%; padding: 15px; font-size: 18px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; margin-top: 20px; transition: 0.2s; }
+        .btn-off { background: #ef4444; color: white; }
+        .btn-on { background: #22c55e; color: white; }
+        #status { margin-top: 15px; font-size: 14px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>التحكم بالمايك 🎙️</h2>
+        <button id="micBtn" class="btn-off" onclick="toggleMic()">المايك: مقفل 🔇</button>
+        <div id="status">الحالة: مكتوم</div>
+    </div>
+
+    <script>
+        let active = false;
+        function toggleMic() {
+            active = !active;
+            const btn = document.getElementById('micBtn');
+            const status = document.getElementById('status');
+            if(active) {
+                btn.className = 'btn-on';
+                btn.innerText = 'المايك: يعمل 🎙️';
+                status.innerText = 'الحالة: متصل ويتم البث';
+            } else {
+                btn.className = 'btn-off';
+                btn.innerText = 'المايك: مقفل 🔇';
+                status.innerText = 'الحالة: مكتوم';
+            }
+        }
+    </script>
+</body>
+</html>
