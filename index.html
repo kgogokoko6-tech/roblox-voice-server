@@ -47,7 +47,6 @@
         statusDiv.innerText = 'جاري التحقق...';
 
         try {
-            // استخدام GET لتجنب حظر POST من قِبل الاستضافة (405 Method Not Allowed)
             const response = await fetch(`/api/verify-code?code=${encodeURIComponent(code)}`);
             const data = await response.json();
 
