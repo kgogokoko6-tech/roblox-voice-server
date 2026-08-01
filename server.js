@@ -1,63 +1,290 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
+// =====================================================
+// Roblox Voice Chat Auth Server — Deno Deploy version
+// Works with BOTH Deno Deploy and Node.js
+// Fixes: 405 Method Not Allowed (accepts GET + POST)
+// =====================================================
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const activeCodes = new Map();   // code -> { userId, username }
+const verifiedUsers = new Set(); // userId (verified)
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(__dirname));
+const API_ROUTES = ["/api/register-code", "/api/verify-code", "/api/check-auth"];
 
-const activeCodes = new Map();
-const verifiedUsers = new Set();
+// ---------- Request helpers ----------
+async function getParams(req) {
+    const url = new URL(req.url);
+    const params = {};
+    // From query string
+    for (const [k, v] of url.searchParams.entries()) params[k] = v;
+    // From JSON body (if any)
+    try {
+        const ct = req.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+            const body = await req.json();
+            for (const k in body) params[k] = body[k];
+        }
+    } catch (e) { /* ignore bad body */ }
+    return params;
+}
 
-app.all('/api/register-code', (req, res) => {
-    const userId = req.query.userId || req.body?.userId;
-    const code = req.query.code || req.body?.code;
-    const username = req.query.username || req.body?.username || 'Player';
+function json(res, obj, status = 200) {
+    const body = JSON.stringify(obj);
+    return new Response(body, {
+        status,
+        headers: {
+            "content-type": "application/json; charset=utf-8",
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "Content-Type",
+        },
+    });
+}
 
-    if (!userId || !code) {
-        return res.status(200).json({ success: false, error: 'بيانات ناقصة' });
-    }
+// ---------- Handlers ----------
+async function registerCode(p) {
+    const userId = p.userId;
+    const code = p.code;
+    const username = p.username || "Player";
+    if (!userId || !code) return json(null, { success: false, error: "بيانات ناقصة" });
+    activeCodes.set(String(code).trim(), { userId: String(userId), username: String(username) });
+    return json(null, { success: true });
+}
 
-    activeCodes.set(String(code).trim(), { userId: String(userId), username });
-    return res.status(200).json({ success: true });
-});
-
-app.all('/api/check-auth', (req, res) => {
-    const userId = String(req.query.userId || req.body?.userId || '');
-    const isVerified = verifiedUsers.has(userId);
-    return res.status(200).json({ verified: isVerified });
-});
-
-app.all('/api/verify-code', (req, res) => {
-    const code = String(req.query.code || req.body?.code || '').trim();
-    
-    if (!code) {
-        return res.status(200).json({ success: false, message: 'برجاء كتابة الرمز!' });
-    }
+async function verifyCode(p) {
+    const code = String(p.code || "").trim();
+    if (!code) return json(null, { success: false, message: "برجاء كتابة الرمز!" });
 
     if (activeCodes.has(code)) {
         const userData = activeCodes.get(code);
         verifiedUsers.add(userData.userId);
         activeCodes.delete(code);
-        return res.status(200).json({ success: true, user: userData });
-    } else {
-        return res.status(200).json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+        return json(null, { success: true, user: userData });
     }
-});
+    return json(null, { success: false, message: "الكود غير صحيح أو انتهت صلاحيته!" });
+}
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+async function checkAuth(p) {
+    const userId = String(p.userId || "");
+    const isVerified = verifiedUsers.has(userId);
+    return json(null, { verified: isVerified });
+}
 
-io.on('connection', (socket) => {
-    socket.on('join-room', (data) => socket.join(data.room || 'default'));
-    socket.on('signal', (data) => io.to(data.room).emit('signal', { sender: socket.id, signal: data.signal }));
-});
+// ---------- Server ----------
+async function handle(req) {
+    const url = new URL(req.url);
+    const path = url.pathname;
 
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+        return new Response("", { status: 204, headers: {
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "Content-Type",
+        }});
+    }
+
+    // API routes (accept any method: GET, POST, PUT...)
+    if (API_ROUTES.includes(path)) {
+        const p = await getParams(req);
+        switch (path) {
+            case "/api/register-code": return await registerCode(p);
+            case "/api/verify-code":   return await verifyCode(p);
+            case "/api/check-auth":    return await checkAuth(p);
+        }
+    }
+
+    // Serve static files (index.html, etc.)
+    let file = "index.html";
+    if (path !== "/") file = path.replace(/^\/+/, "");
+    try {
+        const text = await Deno.readTextFile(file);
+        return new Response(text, {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8", "access-control-allow-origin": "*" },
+        });
+    } catch (e) {
+        return json(null, { success: false, error: "not found" }, 404);
+    }
+}
+
+// Detect environment: Deno Deploy vs Node
+if (typeof Deno !== "undefined" && Deno.serve) {
+    Deno.serve({ port: 8080 }, handle);
+} else {
+    // Node.js fallback
+    const http = require("http");
+    const fs = require("fs");
+    const { URL } = require("url");
+    const nodeHandle = async (req, res) => {
+        const url = new URL(req.url, "http://localhost");
+        const path = url.pathname;
+        const headers = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+        if (req.method === "OPTIONS") { res.writeHead(204, headers); res.end(); return; }
+        if (API_ROUTES.includes(path)) {
+            const p = {};
+            for (const [k, v] of url.searchParams.entries()) p[k] = v;
+            try {
+                let body = "";
+                for await (const chunk of req) body += chunk;
+                if (body) { try { Object.assign(p, JSON.parse(body)); } catch(e){} }
+            } catch(e) {}
+            let out;
+            switch (path) {
+                case "/api/register-code": out = await registerCode(p); break;
+                case "/api/verify-code":   out = await verifyCode(p); break;
+                case "/api/check-auth":    out = await checkAuth(p); break;
+            }
+            const data = await out.text();
+            res.writeHead(200, headers); res.end(data); return;
+        }
+        let file = "index.html";
+        if (path !== "/") file = path.replace(/^\/+/, "");
+        try { const t = fs.readFileSync(file); res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(t); }
+        catch(e) { res.writeHead(404); res.end("Not found"); }
+    };
+    http.createServer(nodeHandle).listen(8080, () => console.log("Server on 8080"));
+}
+// =====================================================
+// Roblox Voice Chat Auth Server — Deno Deploy version
+// Works with BOTH Deno Deploy and Node.js
+// Fixes: 405 Method Not Allowed (accepts GET + POST)
+// =====================================================
+
+const activeCodes = new Map();   // code -> { userId, username }
+const verifiedUsers = new Set(); // userId (verified)
+
+const API_ROUTES = ["/api/register-code", "/api/verify-code", "/api/check-auth"];
+
+// ---------- Request helpers ----------
+async function getParams(req) {
+    const url = new URL(req.url);
+    const params = {};
+    // From query string
+    for (const [k, v] of url.searchParams.entries()) params[k] = v;
+    // From JSON body (if any)
+    try {
+        const ct = req.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+            const body = await req.json();
+            for (const k in body) params[k] = body[k];
+        }
+    } catch (e) { /* ignore bad body */ }
+    return params;
+}
+
+function json(res, obj, status = 200) {
+    const body = JSON.stringify(obj);
+    return new Response(body, {
+        status,
+        headers: {
+            "content-type": "application/json; charset=utf-8",
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "Content-Type",
+        },
+    });
+}
+
+// ---------- Handlers ----------
+async function registerCode(p) {
+    const userId = p.userId;
+    const code = p.code;
+    const username = p.username || "Player";
+    if (!userId || !code) return json(null, { success: false, error: "بيانات ناقصة" });
+    activeCodes.set(String(code).trim(), { userId: String(userId), username: String(username) });
+    return json(null, { success: true });
+}
+
+async function verifyCode(p) {
+    const code = String(p.code || "").trim();
+    if (!code) return json(null, { success: false, message: "برجاء كتابة الرمز!" });
+
+    if (activeCodes.has(code)) {
+        const userData = activeCodes.get(code);
+        verifiedUsers.add(userData.userId);
+        activeCodes.delete(code);
+        return json(null, { success: true, user: userData });
+    }
+    return json(null, { success: false, message: "الكود غير صحيح أو انتهت صلاحيته!" });
+}
+
+async function checkAuth(p) {
+    const userId = String(p.userId || "");
+    const isVerified = verifiedUsers.has(userId);
+    return json(null, { verified: isVerified });
+}
+
+// ---------- Server ----------
+async function handle(req) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+        return new Response("", { status: 204, headers: {
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "Content-Type",
+        }});
+    }
+
+    // API routes (accept any method: GET, POST, PUT...)
+    if (API_ROUTES.includes(path)) {
+        const p = await getParams(req);
+        switch (path) {
+            case "/api/register-code": return await registerCode(p);
+            case "/api/verify-code":   return await verifyCode(p);
+            case "/api/check-auth":    return await checkAuth(p);
+        }
+    }
+
+    // Serve static files (index.html, etc.)
+    let file = "index.html";
+    if (path !== "/") file = path.replace(/^\/+/, "");
+    try {
+        const text = await Deno.readTextFile(file);
+        return new Response(text, {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8", "access-control-allow-origin": "*" },
+        });
+    } catch (e) {
+        return json(null, { success: false, error: "not found" }, 404);
+    }
+}
+
+// Detect environment: Deno Deploy vs Node
+if (typeof Deno !== "undefined" && Deno.serve) {
+    Deno.serve({ port: 8080 }, handle);
+} else {
+    // Node.js fallback
+    const http = require("http");
+    const fs = require("fs");
+    const { URL } = require("url");
+    const nodeHandle = async (req, res) => {
+        const url = new URL(req.url, "http://localhost");
+        const path = url.pathname;
+        const headers = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+        if (req.method === "OPTIONS") { res.writeHead(204, headers); res.end(); return; }
+        if (API_ROUTES.includes(path)) {
+            const p = {};
+            for (const [k, v] of url.searchParams.entries()) p[k] = v;
+            try {
+                let body = "";
+                for await (const chunk of req) body += chunk;
+                if (body) { try { Object.assign(p, JSON.parse(body)); } catch(e){} }
+            } catch(e) {}
+            let out;
+            switch (path) {
+                case "/api/register-code": out = await registerCode(p); break;
+                case "/api/verify-code":   out = await verifyCode(p); break;
+                case "/api/check-auth":    out = await checkAuth(p); break;
+            }
+            const data = await out.text();
+            res.writeHead(200, headers); res.end(data); return;
+        }
+        let file = "index.html";
+        if (path !== "/") file = path.replace(/^\/+/, "");
+        try { const t = fs.readFileSync(file); res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(t); }
+        catch(e) { res.writeHead(404); res.end("Not found"); }
+    };
+    http.createServer(nodeHandle).listen(8080, () => console.log("Server on 8080"));
+}
