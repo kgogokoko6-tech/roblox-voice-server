@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تفعيل الشات الصوتي</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <title>تفعيل الشات الصوتي - Roblox</title>
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
         body { background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
@@ -33,9 +32,7 @@
 </div>
 
 <script>
-    const socket = io();
-
-    document.getElementById('submitBtn').addEventListener('click', function() {
+    document.getElementById('submitBtn').addEventListener('click', async function() {
         const codeInput = document.getElementById('codeInput');
         const statusDiv = document.getElementById('status');
         const code = codeInput.value.trim();
@@ -47,21 +44,23 @@
         }
 
         statusDiv.className = '';
-        statusDiv.innerText = 'جاري التحقق عبر السيرفر...';
+        statusDiv.innerText = 'جاري التحقق...';
 
-        // إرسال الكود عبر السوكت فوراً
-        socket.emit('verify-code-socket', { code: code });
-    });
+        try {
+            // استخدام GET لتجنب حظر POST من قِبل الاستضافة (405 Method Not Allowed)
+            const response = await fetch(`/api/verify-code?code=${encodeURIComponent(code)}`);
+            const data = await response.json();
 
-    // استقبال الرد مباشرة بدون HTTP Fetch
-    socket.on('verify-response', function(data) {
-        const statusDiv = document.getElementById('status');
-        if (data.success) {
-            statusDiv.className = 'success';
-            statusDiv.innerText = '✅ تم التفعيل بنجاح! ارجع للعبة الآن.';
-        } else {
+            if (data.success) {
+                statusDiv.className = 'success';
+                statusDiv.innerText = '✅ تم التفعيل بنجاح! ارجع للعبة الآن.';
+            } else {
+                statusDiv.className = 'error';
+                statusDiv.innerText = '❌ ' + (data.message || 'الرمز غير صحيح!');
+            }
+        } catch (err) {
             statusDiv.className = 'error';
-            statusDiv.innerText = '❌ ' + (data.message || 'الرمز غير صحيح!');
+            statusDiv.innerText = '❌ خطأ: ' + err.message;
         }
     });
 </script>
