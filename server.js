@@ -1,66 +1,57 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.json());
+app.use(express.static('public')); // ليخدم ملفات الـ HTML والـ JS للموقع
 
+// الخرائط لحفظ الأكواد والمستخدمين الموثقين
 const activeCodes = new Map();
-const players = new Map(); // بيانات أماكن اللاعبين
+const verifiedUsers = new Set();
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// إرسال الكود من روبلوكس
-app.post('/api/create-code', (req, res) => {
-    const { userId, username, code } = req.body;
+// 1. API تسجيل الكود القادم من روبلوكس
+app.post('/api/register-code', (req, res) => {
+    const { userId, code, username } = req.body;
+    if (!userId || !code) {
+        return res.status(400).json({ error: 'بيانات غير مكتملة' });
+    }
     activeCodes.set(code, { userId, username });
     res.json({ success: true });
 });
 
-// إرسال المكان من روبلوكس
-app.post('/api/update-position', (req, res) => {
-    const { userId, position } = req.body;
-    if (players.has(userId)) {
-        players.get(userId).position = position;
+// 2. API فحص روبلوكس هل التفعيل تم أم لا
+app.get('/api/check-auth', (req, res) => {
+    const userId = req.query.userId;
+    const isVerified = verifiedUsers.has(userId);
+    res.json({ verified: isVerified });
+});
+
+// 3. API كتابة الكود وتأكيده من قِبل اللاعب في المتصفح
+app.post('/api/verify-code', (req, res) => {
+    const { code } = req.body;
+    if (activeCodes.has(code)) {
+        const userData = activeCodes.get(code);
+        verifiedUsers.add(userData.userId);
+        activeCodes.delete(code);
+        return res.json({ success: true, user: userData });
     }
-    res.sendStatus(200);
+    res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
 });
 
+// إعدادات الـ WebSockets للصوت
 io.on('connection', (socket) => {
-    socket.on('verify_code', (code) => {
-        if (activeCodes.has(code)) {
-            const data = activeCodes.get(code);
-            activeCodes.delete(code);
-            
-            socket.userId = data.userId;
-            socket.username = data.username;
-
-            players.set(data.userId, {
-                username: data.username,
-                socketId: socket.id,
-                position: { x: 0, y: 0, z: 0 }
-            });
-
-            socket.emit('verified', { userId: data.userId, username: data.username });
-        } else {
-            socket.emit('error_msg', 'الكود غير صحيح أو منتهي الصلاحية');
-        }
+    socket.on('join-room', (data) => {
+        socket.join(data.room || 'default');
     });
 
-    socket.on('toggle_mute', (isMuted) => {
-        socket.broadcast.emit('player_mute_changed', { userId: socket.userId, isMuted });
-    });
-
-    socket.on('disconnect', () => {
-        if (socket.userId) players.delete(socket.userId);
+    socket.on('signal', (data) => {
+        io.to(data.room).emit('signal', { sender: socket.id, signal: data.signal });
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
