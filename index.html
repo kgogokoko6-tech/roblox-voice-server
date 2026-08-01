@@ -214,6 +214,21 @@
         accent-color: var(--green);
       }
 
+      .mic-state {
+        margin-top: -8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .mic-state.ok {
+        color: var(--green);
+      }
+
+      .mic-state.error {
+        color: var(--red);
+      }
+
       .players {
         display: grid;
         gap: 10px;
@@ -422,6 +437,7 @@
               <span>تشغيل المايكروفون</span>
               <input id="micToggle" type="checkbox" checked>
             </label>
+            <p class="mic-state" id="micState">جاري طلب إذن المايك...</p>
 
             <label class="switch">
               <span>تشغيل السماعات</span>
@@ -448,6 +464,7 @@
     <script>
       const state = {
         socket: null,
+        micStream: null,
         players: [],
         distances: [],
         nearbyRadius: 60,
@@ -469,6 +486,7 @@
         sensitivity: document.getElementById("sensitivity"),
         sensitivityValue: document.getElementById("sensitivityValue"),
         micToggle: document.getElementById("micToggle"),
+        micState: document.getElementById("micState"),
         headphonesToggle: document.getElementById("headphonesToggle"),
       };
 
@@ -476,6 +494,7 @@
 
       connect();
       bindControls();
+      startMicrophone();
 
       function connect() {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -598,6 +617,62 @@
         el.sensitivity.addEventListener("input", () => {
           el.sensitivityValue.textContent = `${el.sensitivity.value}%`;
         });
+
+        el.micToggle.addEventListener("change", () => {
+          if (el.micToggle.checked) {
+            startMicrophone();
+          } else {
+            stopMicrophone();
+          }
+        });
+      }
+
+      async function startMicrophone() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setMicState("error", "المتصفح لا يدعم تشغيل المايك");
+          el.micToggle.checked = false;
+          return;
+        }
+
+        try {
+          setMicState("", "جاري طلب إذن المايك...");
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+            video: false,
+          });
+
+          stopMicrophone();
+          state.micStream = stream;
+          el.micToggle.checked = true;
+          setMicState("ok", "المايك شغال");
+        } catch (error) {
+          state.micStream = null;
+          el.micToggle.checked = false;
+          setMicState("error", "اسمح للمايك من المتصفح ثم اضغط تشغيل المايكروفون");
+        }
+      }
+
+      function stopMicrophone() {
+        if (state.micStream) {
+          for (const track of state.micStream.getTracks()) {
+            track.stop();
+          }
+        }
+
+        state.micStream = null;
+
+        if (!el.micToggle.checked) {
+          setMicState("", "المايك متوقف");
+        }
+      }
+
+      function setMicState(className, text) {
+        el.micState.className = `mic-state ${className}`.trim();
+        el.micState.textContent = text;
       }
 
       function setStatus(className, text) {
