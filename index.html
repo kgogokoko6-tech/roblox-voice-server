@@ -229,6 +229,11 @@
         color: var(--red);
       }
 
+      .range-row.disabled,
+      .switch.disabled {
+        opacity: 0.55;
+      }
+
       .players {
         display: grid;
         gap: 10px;
@@ -443,6 +448,7 @@
               <span>تشغيل السماعات</span>
               <input id="headphonesToggle" type="checkbox" checked>
             </label>
+            <p class="mic-state ok" id="headphonesState">السماعات شغالة</p>
           </div>
 
           <div class="distance-list" id="distances"></div>
@@ -488,6 +494,7 @@
         micToggle: document.getElementById("micToggle"),
         micState: document.getElementById("micState"),
         headphonesToggle: document.getElementById("headphonesToggle"),
+        headphonesState: document.getElementById("headphonesState"),
       };
 
       const nf = new Intl.NumberFormat("ar-EG", { maximumFractionDigits: 1 });
@@ -612,6 +619,7 @@
       function bindControls() {
         el.volume.addEventListener("input", () => {
           el.volumeValue.textContent = `${el.volume.value}%`;
+          applyHeadphonesState();
         });
 
         el.sensitivity.addEventListener("input", () => {
@@ -625,6 +633,9 @@
             stopMicrophone();
           }
         });
+
+        el.headphonesToggle.addEventListener("change", applyHeadphonesState);
+        applyHeadphonesState();
       }
 
       async function startMicrophone() {
@@ -664,15 +675,27 @@
         }
 
         state.micStream = null;
-
-        if (!el.micToggle.checked) {
-          setMicState("", "المايك متوقف");
-        }
+        setMicState("", "المايك متوقف");
       }
 
       function setMicState(className, text) {
         el.micState.className = `mic-state ${className}`.trim();
         el.micState.textContent = text;
+      }
+
+      function applyHeadphonesState() {
+        const enabled = el.headphonesToggle.checked;
+        const volume = enabled ? Number(el.volume.value) / 100 : 0;
+
+        el.volume.disabled = !enabled;
+        el.volume.closest(".range-row").classList.toggle("disabled", !enabled);
+        el.headphonesState.className = `mic-state ${enabled ? "ok" : ""}`.trim();
+        el.headphonesState.textContent = enabled ? "السماعات شغالة" : "السماعات متوقفة";
+
+        for (const media of document.querySelectorAll("audio, video")) {
+          media.muted = !enabled;
+          media.volume = volume;
+        }
       }
 
       function setStatus(className, text) {
