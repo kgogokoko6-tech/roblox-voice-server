@@ -7,15 +7,20 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// تفعيل CORS للسماح بالطلبات من أي مكان بدون منع المتصفح
+// 1. معالجة الـ CORS بشكل يدوي شامل لمنع أخطاء 405 Method Not Allowed
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    
+    // لو الطلب OPTIONS رجّع 200 فوراً
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
     next();
 });
 
+// 2. قراءة بيانات الـ JSON
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -25,30 +30,37 @@ app.use(express.static(__dirname));
 const activeCodes = new Map();
 const verifiedUsers = new Set();
 
-// 1. تسجيل الرمز القادم من روبلوكس
-app.post('/api/register-code', (req, res) => {
+// 3. مسار تسجيل الرمز من روبلوكس (POST)
+app.all('/api/register-code', (req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(200).json({ success: false, message: 'Only POST supported' });
+    }
     try {
-        const { userId, code, username } = req.body;
+        const { userId, code, username } = req.body || {};
         if (!userId || !code) {
             return res.status(400).json({ success: false, error: 'بيانات ناقصة' });
         }
         activeCodes.set(String(code).trim(), { userId: String(userId), username });
         console.log(`[Code Registered] Code: ${code} for User: ${username}`);
-        return res.json({ success: true });
+        return res.status(200).json({ success: true });
     } catch (err) {
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 2. فحص روبلوكس لحالة التفعيل
+// 4. مسار فحص حالة التفعيل في روبلوكس (GET)
 app.get('/api/check-auth', (req, res) => {
     const userId = String(req.query.userId || '');
     const isVerified = verifiedUsers.has(userId);
-    return res.json({ verified: isVerified });
+    return res.status(200).json({ verified: isVerified });
 });
 
-// 3. تأكيد الرمز من المتصفح
-app.post('/api/verify-code', (req, res) => {
+// 5. مسار تأكيد الرمز من المتصفح (مسموح بـ ALL لمعالجة أي شذوذ في الطلبات)
+app.all('/api/verify-code', (req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(200).json({ success: false, message: 'برجاء استخدام طلب POST' });
+    }
+
     try {
         const code = String(req.body.code || '').trim();
         
@@ -60,17 +72,17 @@ app.post('/api/verify-code', (req, res) => {
             const userData = activeCodes.get(code);
             verifiedUsers.add(userData.userId);
             activeCodes.delete(code);
-            console.log(`[Verified Success] Code ${code} verified for user ${userData.username}`);
-            return res.json({ success: true, user: userData });
+            console.log(`[Verified Success] Code ${code} verified for ${userData.username}`);
+            return res.status(200).json({ success: true, user: userData });
         } else {
-            return res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+            return res.status(200).json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
         }
     } catch (err) {
         return res.status(500).json({ success: false, message: 'خطأ داخلي بالسيرفر' });
     }
 });
 
-// توجيه الصفحة الرئيسية
+// توجيه الصفحة الرئيسية لملف index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
