@@ -46,8 +46,13 @@
         statusDiv.className = '';
         statusDiv.innerText = 'جاري التحقق...';
 
+        // تحديد رابط السيرفر سواء فتحت من الرابط مباشر أو من الجهاز
+        const baseUrl = window.location.protocol.startsWith('http') 
+            ? window.location.origin 
+            : 'https://roblox-voice-server.kgogokoko6-tech.deno.net';
+
         try {
-            const response = await fetch('/api/verify-code', {
+            const response = await fetch(baseUrl + '/api/verify-code', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: code })
@@ -64,7 +69,7 @@
             }
         } catch (err) {
             statusDiv.className = 'error';
-            statusDiv.innerText = '❌ حدث خطأ في الاتصال بالسيرفر!';
+            statusDiv.innerText = '❌ خطأ: ' + err.message;
         }
     });
 </script>
