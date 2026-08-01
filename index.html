@@ -14,6 +14,7 @@
         input:focus { border-color: #38bdf8; }
         button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #0284c7; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #0369a1; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
         #status { margin-top: 16px; font-size: 14px; font-weight: bold; }
         .success { color: #4ade80; }
         .error { color: #f87171; }
@@ -24,7 +25,7 @@
 <div class="card">
     <h2>🎙️ تفعيل الشات الصوتي</h2>
     <p>ادخل الرمز الظاهر على شاشتك داخل لعبة روبلوكس لتفعيل الصوت وفك حركة الشخصية.</p>
-    
+
     <input type="text" id="codeInput" maxlength="6" placeholder="000000">
     <button id="submitBtn">تأكيد ودخول</button>
 
@@ -32,22 +33,28 @@
 </div>
 
 <script>
-    document.getElementById('submitBtn').addEventListener('click', async function() {
-        const codeInput = document.getElementById('codeInput');
-        const statusDiv = document.getElementById('status');
-        const code = codeInput.value.trim();
+    const btn = document.getElementById('submitBtn');
+    const input = document.getElementById('codeInput');
+    const statusDiv = document.getElementById('status');
 
+    btn.addEventListener('click', async function() {
+        const code = input.value.trim();
         if (!code) {
             statusDiv.className = 'error';
             statusDiv.innerText = 'الرجاء كتابة الرمز أولاً!';
             return;
         }
 
+        btn.disabled = true;
         statusDiv.className = '';
         statusDiv.innerText = 'جاري التحقق...';
 
         try {
-            const response = await fetch(`/api/verify-code?code=${encodeURIComponent(code)}`);
+            const response = await fetch('/api/verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
             const data = await response.json();
 
             if (data.success) {
@@ -60,6 +67,8 @@
         } catch (err) {
             statusDiv.className = 'error';
             statusDiv.innerText = '❌ خطأ: ' + err.message;
+        } finally {
+            btn.disabled = false;
         }
     });
 </script>
