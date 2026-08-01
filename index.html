@@ -3,39 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Control Panel</title>
+    <title>نظام VOICEBLOX</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { font-family: system-ui, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 30px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 300px; border: 1px solid #334155; }
-        button { width: 100%; padding: 15px; font-size: 18px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; margin-top: 20px; transition: 0.2s; }
-        .btn-off { background: #ef4444; color: white; }
-        .btn-on { background: #22c55e; color: white; }
-        #status { margin-top: 15px; font-size: 14px; color: #94a3b8; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: #050607; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Navbar Header */
+        header { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; border-bottom: 1px solid #12161b; }
+        .brand { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 16px; }
+        .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; display: inline-block; }
+
+        /* Main Dashboard Grid */
+        .main-container { padding: 25px 40px; flex: 1; display: flex; flex-direction: column; gap: 20px; max-width: 1200px; margin: 0 auto; width: 100%; }
+        .top-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        /* Card Styles */
+        .card { background: #0c0e12; border: 1px solid #1a2028; border-radius: 12px; padding: 20px; position: relative; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .card-title { font-size: 14px; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+
+        /* Mute/State Button */
+        .btn-status { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-status.muted { background: #ef4444; }
+
+        /* Audio Visualizer & Controls */
+        .visualizer { display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 50px; margin-top: 15px; }
+        .bar { width: 4px; background: #10b981; border-radius: 2px; height: 10%; transition: height 0.1s ease; }
+        
+        .slider-container { margin-top: 15px; }
+        input[type=range] { width: 100%; accent-color: #ffffff; cursor: pointer; }
+        .stats-row { display: flex; gap: 10px; margin-top: 15px; }
+        .stat-box { flex: 1; background: #12161d; padding: 10px; border-radius: 6px; text-align: center; font-size: 12px; color: #10b981; border: 1px solid #1a2028; }
+
+        /* Nearby Players List */
+        .players-card { flex: 1; display: flex; flex-direction: column; }
+        .player-item { background: #12161d; border: 1px solid #1a2028; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .player-info { display: flex; align-items: center; gap: 10px; }
+        .avatar-box { width: 36px; height: 36px; background: #e2e8f0; color: #000; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; }
+        .player-meta { font-size: 11px; color: #64748b; }
+
+        /* Linking Modal */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .modal-card { background: #0c0e12; border: 1px solid #1a2028; padding: 30px; border-radius: 12px; width: 360px; text-align: center; }
+        .modal-card input { width: 100%; padding: 12px; background: #050607; border: 1px solid #1a2028; border-radius: 6px; color: white; text-align: center; font-size: 18px; margin: 15px 0; outline: none; }
+        .modal-card button { width: 100%; padding: 12px; background: #10b981; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>التحكم بالمايك 🎙️</h2>
-        <button id="micBtn" class="btn-off" onclick="toggleMic()">المايك: مقفل 🔇</button>
-        <div id="status">الحالة: مكتوم</div>
+
+    <!-- التوثيق / إدخال الكود -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-card">
+            <h3>ربط نظام الصوت 🎙️</h3>
+            <p style="font-size: 12px; color: #64748b; margin-top: 5px;">ادخل الكود الظاهر لك داخل لعبة روبلوكس</p>
+            <input type="text" id="link-code" placeholder="X89B21" maxlength="6">
+            <button onclick="submitCode()">دخول النظام</button>
+            <p id="error-msg" style="color: #ef4444; font-size: 12px; margin-top: 10px;"></p>
+        </div>
+    </div>
+
+    <!-- الشريط العلوي -->
+    <header>
+        <div style="font-size: 12px; color: #10b981;"><span class="status-dot"></span> متصل</div>
+        <div class="brand">
+            نظام VOICEBLOX 🎤
+            <span id="user-tag" style="font-size: 11px; color: #64748b;">• غير مسجل</span>
+        </div>
+    </header>
+
+    <!-- لوحة التحكم الرئيسية (نفس الصورة الثانية) -->
+    <div class="main-container">
+        
+        <div class="top-cards">
+            <!-- كارت السماعات -->
+            <div class="card">
+                <div class="card-header">
+                    <span style="font-size: 20px; font-weight: bold;" id="vol-percentage">100%</span>
+                    <span class="card-title">السماعات 🔊 <br><small style="font-size: 10px;">مستوى الصوت</small></span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="volume-slider" min="0" max="100" value="100">
+                </div>
+                <div class="stats-row">
+                    <div class="stat-box"><span style="color:#64748b">التأخير</span><br>5-15ms</div>
+                    <div class="stat-box"><span style="color:#64748b">جودة الاتصال</span><br>ممتاز</div>
+                </div>
+            </div>
+
+            <!-- كارت المايكرفون -->
+            <div class="card">
+                <div class="card-header">
+                    <button id="mute-btn" class="btn-status" onclick="toggleMute()">إيقاف</button>
+                    <span class="card-title">المايكروفون 🎙️ <br><small id="mic-label" style="font-size: 10px; color:#10b981;">نشط</small></span>
+                </div>
+                <div class="visualizer">
+                    <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- قائمة اللاعبين القريبين -->
+        <div class="card players-card">
+            <div class="card-header">
+                <span class="card-title" style="color:white;">اللاعبين القريبين</span>
+                <span style="font-size: 12px; color: #64748b;" id="players-count">• 0 لاعبين</span>
+            </div>
+
+            <div id="players-list">
+                <p style="text-align: center; color: #475569; font-size: 13px; margin-top: 20px;">لا يوجد لاعبين قريبين منك حالياً</p>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        let active = false;
-        function toggleMic() {
-            active = !active;
-            const btn = document.getElementById('micBtn');
-            const status = document.getElementById('status');
-            if(active) {
-                btn.className = 'btn-on';
-                btn.innerText = 'المايك: يعمل 🎙️';
-                status.innerText = 'الحالة: متصل ويتم البث';
-            } else {
-                btn.className = 'btn-off';
-                btn.innerText = 'المايك: مقفل 🔇';
-                status.innerText = 'الحالة: مكتوم';
-            }
+        const socket = io();
+        let isMuted = false;
+
+        function submitCode() {
+            const code = document.getElementById('link-code').value.toUpperCase();
+            if(code) socket.emit('verify_code', code);
         }
+
+        socket.on('verified', (data) => {
+            document.getElementById('auth-modal').classList.add('hidden');
+            document.getElementById('user-tag').innerText = `• ${data.username}`;
+            initAudio();
+        });
+
+        socket.on('error_msg', (msg) => {
+            document.getElementById('error-msg').innerText = msg;
+        });
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('mute-btn');
+            const label = document.getElementById('mic-label');
+            
+            if(isMuted) {
+                btn.innerText = "تشغيل";
+                btn.classList.add('muted');
+                label.innerText = "مكتوم";
+                label.style.color = "#ef4444";
+            } else {
+                btn.innerText = "إيقاف";
+                btn.classList.remove('muted');
+                label.innerText = "نشط";
+                label.style.color = "#10b981";
+            }
+            socket.emit('toggle_mute', isMuted);
+        }
+
+        // تحديث الميوت لو اللاعب ضغط زر الميوت جوه روبلوكس
+        socket.on('player_mute_changed', (data) => {
+            if (data.isMuted !== isMuted) toggleMute();
+        });
+
+        // تحديث قائمة القريبين والإحداثيات
+        socket.on('update_nearby_ui', (players) => {
+            const list = document.getElementById('players-list');
+            document.getElementById('players-count').innerText = `• ${players.length} لاعبين`;
+            
+            if(players.length === 0) {
+                list.innerHTML = `<p style="text-align: center; color: #475569; font-size: 13px; margin-top: 20px;">لا يوجد لاعبين قريبين منك حالياً</p>`;
+                return;
+            }
+
+            list.innerHTML = players.map(p => `
+                <div class="player-item">
+                    <div class="player-info">
+                        <div class="avatar-box">${p.username.substring(0,2).toUpperCase()}</div>
+                        <div>
+                            <div>${p.username} <span style="font-size: 10px; color: #10b981;">• متصل</span></div>
+                            <div class="player-meta">${p.distance}م • ${p.volume}%</div>
+                        </div>
+                    </div>
+                    <span>🔊</span>
+                </div>
+            `).join('');
+        });
+
+        function initAudio() {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                const audioContext = new AudioContext();
+                const analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                analyser.fftSize = 32;
+                const bars = document.querySelectorAll('.bar');
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                function animate() {
+                    analyser.getByteFrequencyData(dataArray);
+                    bars.forEach((bar, i) => {
+                        const val = dataArray[i] || 0;
+                        bar.style.height = isMuted ? '5%' : Math.max(10, (val / 255) * 100) + '%';
+                    });
+                    requestAnimationFrame(animate);
+                }
+                animate();
+            }).catch(() => alert("يرجى إعطاء صلاحية المايك!"));
+        }
+
+        // التحكم في الصوت
+        document.getElementById('volume-slider').addEventListener('input', (e) => {
+            document.getElementById('vol-percentage').innerText = e.target.value + '%';
+        });
     </script>
 </body>
 </html>
