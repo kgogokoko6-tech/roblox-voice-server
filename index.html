@@ -37,6 +37,9 @@
     const input = document.getElementById('codeInput');
     const statusDiv = document.getElementById('status');
 
+    // نطاق السيرفر — تلقائيًا من نفس الصفحة، أو حط الرابط يدويًا هنا
+    const baseUrl = window.location.origin || 'https://roblox-voice-server.kgogokoko6-tech.deno.net';
+
     btn.addEventListener('click', async function() {
         const code = input.value.trim();
         if (!code) {
@@ -50,7 +53,7 @@
         statusDiv.innerText = 'جاري التحقق...';
 
         try {
-            const response = await fetch('/api/verify-code', {
+            const response = await fetch(baseUrl + '/api/verify-code', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code })
