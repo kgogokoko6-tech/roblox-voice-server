@@ -10,8 +10,8 @@ const io = new Server(server, { cors: { origin: "*" } });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// خدمة ملفات المجلد العام (الموقع)
-app.use(express.static(path.join(__dirname, 'public')));
+// خدمة الملفات من المجلد الرئيسي مباشرة لأن index.html برة
+app.use(express.static(__dirname));
 
 const activeCodes = new Map();
 const verifiedUsers = new Set();
@@ -53,9 +53,9 @@ app.post('/api/verify-code', (req, res) => {
     }
 });
 
-// توجيه الصفحة الرئيسية لملف HTML
+// توجيه الصفحة الرئيسية لملف index.html الموجود في نفس المجلد
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // WebSockets
