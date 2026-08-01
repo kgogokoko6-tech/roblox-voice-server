@@ -7,53 +7,70 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// تفعيل CORS للسماح بالطلبات من أي مكان بدون منع المتصفح
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// خدمة الملفات من المجلد الرئيسي مباشرة لأن index.html برة
+// خدمة الملفات من المجلد الحالي
 app.use(express.static(__dirname));
 
 const activeCodes = new Map();
 const verifiedUsers = new Set();
 
-// 1. تسجيل الرمز من روبلوكس
+// 1. تسجيل الرمز القادم من روبلوكس
 app.post('/api/register-code', (req, res) => {
-    const { userId, code, username } = req.body;
-    if (!userId || !code) {
-        return res.status(400).json({ success: false, error: 'بيانات ناقصة' });
+    try {
+        const { userId, code, username } = req.body;
+        if (!userId || !code) {
+            return res.status(400).json({ success: false, error: 'بيانات ناقصة' });
+        }
+        activeCodes.set(String(code).trim(), { userId: String(userId), username });
+        console.log(`[Code Registered] Code: ${code} for User: ${username}`);
+        return res.json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
     }
-    activeCodes.set(String(code).trim(), { userId: String(userId), username });
-    console.log(`[Code Registered] Code: ${code} for User: ${username}`);
-    return res.json({ success: true });
 });
 
-// 2. فحص حالة تفعيل اللاعب في روبلوكس
+// 2. فحص روبلوكس لحالة التفعيل
 app.get('/api/check-auth', (req, res) => {
     const userId = String(req.query.userId || '');
     const isVerified = verifiedUsers.has(userId);
     return res.json({ verified: isVerified });
 });
 
-// 3. تأكيد الكود من المتصفح
+// 3. تأكيد الرمز من المتصفح
 app.post('/api/verify-code', (req, res) => {
-    const code = String(req.body.code || '').trim();
-    
-    if (!code) {
-        return res.status(400).json({ success: false, message: 'برجاء كتابة الرمز!' });
-    }
+    try {
+        const code = String(req.body.code || '').trim();
+        
+        if (!code) {
+            return res.status(400).json({ success: false, message: 'برجاء كتابة الرمز!' });
+        }
 
-    if (activeCodes.has(code)) {
-        const userData = activeCodes.get(code);
-        verifiedUsers.add(userData.userId);
-        activeCodes.delete(code);
-        console.log(`[Verified] User ${userData.username} successfully verified!`);
-        return res.json({ success: true, user: userData });
-    } else {
-        return res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+        if (activeCodes.has(code)) {
+            const userData = activeCodes.get(code);
+            verifiedUsers.add(userData.userId);
+            activeCodes.delete(code);
+            console.log(`[Verified Success] Code ${code} verified for user ${userData.username}`);
+            return res.json({ success: true, user: userData });
+        } else {
+            return res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+        }
+    } catch (err) {
+        return res.status(500).json({ success: false, message: 'خطأ داخلي بالسيرفر' });
     }
 });
 
-// توجيه الصفحة الرئيسية لملف index.html الموجود في نفس المجلد
+// توجيه الصفحة الرئيسية
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
