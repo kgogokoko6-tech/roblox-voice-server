@@ -1,48 +1,74 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// السماح ببيانات JSON و URL Encoded
 app.use(express.json());
-app.use(express.static('public')); // للوصول لملف index.html
+app.use(express.urlencoded({ extended: true }));
 
-// خرائط تخزين الأكواد المؤقتة
+// خدمة الملفات المباشرة (مثل index.html)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// تخزين الأكواد والمستخدمين
 const activeCodes = new Map();
 const verifiedUsers = new Set();
 
-// 1. استقبال الرمز القادم من روبلوكس وتخزينه
+// 1. استقبال الرمز من روبلوكس
 app.post('/api/register-code', (req, res) => {
-    const { userId, code, username } = req.body;
-    if (!userId || !code) {
-        return res.status(400).json({ error: 'بيانات ناقصة' });
+    try {
+        const { userId, code, username } = req.body;
+        if (!userId || !code) {
+            return res.status(400).json({ success: false, error: 'بيانات ناقصة' });
+        }
+        activeCodes.set(String(code).trim(), { userId: String(userId), username });
+        console.log(`[Code Registered] Code: ${code} for User: ${username} (${userId})`);
+        return res.json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
     }
-    activeCodes.set(code, { userId, username });
-    res.json({ success: true });
 });
 
-// 2. فحص روبلوكس المستمر هل تم التفعيل عبر المتصفح أم لا
+// 2. فحص روبلوكس لحالة التفعيل
 app.get('/api/check-auth', (req, res) => {
-    const userId = req.query.userId;
+    const userId = String(req.query.userId);
     const isVerified = verifiedUsers.has(userId);
-    res.json({ verified: isVerified });
+    return res.json({ verified: isVerified });
 });
 
-// 3. مطابقة وتأكيد الكود عند إدخاله في الموقع
+// 3. تأكيد الكود من المتصفح
 app.post('/api/verify-code', (req, res) => {
-    const { code } = req.body;
-    if (activeCodes.has(code)) {
-        const userData = activeCodes.get(code);
-        verifiedUsers.add(userData.userId);
-        activeCodes.delete(code);
-        return res.json({ success: true, user: userData });
+    try {
+        const code = String(req.body.code || '').trim();
+        
+        if (!code) {
+            return res.status(400).json({ success: false, message: 'برجاء كتابة الرمز!' });
+        }
+
+        if (activeCodes.has(code)) {
+            const userData = activeCodes.get(code);
+            verifiedUsers.add(userData.userId);
+            activeCodes.delete(code); // حذف الكود بعد الاستخدام
+            console.log(`[Auth Success] User ${userData.username} (${userData.userId}) verified!`);
+            return res.json({ success: true, user: userData });
+        } else {
+            return res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+        }
+    } catch (err) {
+        return res.status(500).json({ success: false, message: 'خطأ داخلي بالسيرفر!' });
     }
-    res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
 });
 
-// إعدادات الـ WebSockets
+// المسار الرئيسي لعرض الصفحة في حالة عدم عمل static بشكل آلي
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// WebSockets للصوت
 io.on('connection', (socket) => {
     socket.on('join-room', (data) => {
         socket.join(data.room || 'default');
