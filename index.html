@@ -1,83 +1,72 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تفعيل الشات الصوتي - Roblox</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        h2 { margin-top: 0; color: #38bdf8; }
+        p { color: #94a3b8; font-size: 14px; line-height: 1.5; }
+        input { width: 100%; padding: 14px; border-radius: 8px; border: 2px solid #334155; background: #0f172a; color: #fff; font-size: 22px; text-align: center; letter-spacing: 4px; margin: 16px 0; outline: none; }
+        input:focus { border-color: #38bdf8; }
+        button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #0284c7; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0369a1; }
+        #status { margin-top: 16px; font-size: 14px; font-weight: bold; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+    </style>
+</head>
+<body>
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+<div class="card">
+    <h2>🎙️ تفعيل الشات الصوتي</h2>
+    <p>ادخل الرمز الظاهر على شاشتك داخل لعبة روبلوكس لتفعيل الصوت وفك حركة الشخصية.</p>
+    
+    <input type="text" id="codeInput" maxlength="6" placeholder="000000">
+    <button onclick="verifyCode()">تأكيد ودخول</button>
 
-// السماح ببيانات JSON و URL Encoded
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+    <div id="status"></div>
+</div>
 
-// خدمة الملفات المباشرة (مثل index.html)
-app.use(express.static(path.join(__dirname, 'public')));
+<script>
+    async function verifyCode() {
+        const code = document.getElementById('codeInput').value.trim();
+        const statusDiv = document.getElementById('status');
 
-// تخزين الأكواد والمستخدمين
-const activeCodes = new Map();
-const verifiedUsers = new Set();
-
-// 1. استقبال الرمز من روبلوكس
-app.post('/api/register-code', (req, res) => {
-    try {
-        const { userId, code, username } = req.body;
-        if (!userId || !code) {
-            return res.status(400).json({ success: false, error: 'بيانات ناقصة' });
-        }
-        activeCodes.set(String(code).trim(), { userId: String(userId), username });
-        console.log(`[Code Registered] Code: ${code} for User: ${username} (${userId})`);
-        return res.json({ success: true });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: err.message });
-    }
-});
-
-// 2. فحص روبلوكس لحالة التفعيل
-app.get('/api/check-auth', (req, res) => {
-    const userId = String(req.query.userId);
-    const isVerified = verifiedUsers.has(userId);
-    return res.json({ verified: isVerified });
-});
-
-// 3. تأكيد الكود من المتصفح
-app.post('/api/verify-code', (req, res) => {
-    try {
-        const code = String(req.body.code || '').trim();
-        
         if (!code) {
-            return res.status(400).json({ success: false, message: 'برجاء كتابة الرمز!' });
+            statusDiv.className = 'error';
+            statusDiv.innerText = 'الرجاء كتابة الرمز أولاً!';
+            return;
         }
 
-        if (activeCodes.has(code)) {
-            const userData = activeCodes.get(code);
-            verifiedUsers.add(userData.userId);
-            activeCodes.delete(code); // حذف الكود بعد الاستخدام
-            console.log(`[Auth Success] User ${userData.username} (${userData.userId}) verified!`);
-            return res.json({ success: true, user: userData });
-        } else {
-            return res.json({ success: false, message: 'الكود غير صحيح أو انتهت صلاحيته!' });
+        statusDiv.className = '';
+        statusDiv.innerText = 'جاري التحقق...';
+
+        try {
+            const response = await fetch('/api/verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                statusDiv.className = 'success';
+                statusDiv.innerText = '✅ تم التفعيل بنجاح! ارجع للعبة الآن.';
+            } else {
+                statusDiv.className = 'error';
+                statusDiv.innerText = '❌ ' + (data.message || 'الرمز غير صحيح!');
+            }
+        } catch (err) {
+            statusDiv.className = 'error';
+            statusDiv.innerText = '❌ حدث خطأ في الاتصال بالسيرفر!';
         }
-    } catch (err) {
-        return res.status(500).json({ success: false, message: 'خطأ داخلي بالسيرفر!' });
     }
-});
+</script>
 
-// المسار الرئيسي لعرض الصفحة في حالة عدم عمل static بشكل آلي
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// WebSockets للصوت
-io.on('connection', (socket) => {
-    socket.on('join-room', (data) => {
-        socket.join(data.room || 'default');
-    });
-
-    socket.on('signal', (data) => {
-        io.to(data.room).emit('signal', { sender: socket.id, signal: data.signal });
-    });
-});
-
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+</body>
+</html>
