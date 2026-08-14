@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VoiceBlox</title>
+    <style>
+      :root {
+        --bg: #eef1f6;
+        --card: #ffffff;
+        --line: #e6e9ef;
+        --text: #16181d;
+        --muted: #8a92a1;
+        --blue: #2f6fed;
+        --blue-soft: #eaf1ff;
+        --green: #22c58b;
+        --red: #ff5a5a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        padding: 24px;
+      }
+
+      .card {
+        width: min(360px, 100%);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        box-shadow: 0 20px 50px rgba(20, 30, 60, 0.08);
+        padding: 22px;
+      }
+
+      .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 900;
+        font-size: 16px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #f4f6fa;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .pill.ok {
+        background: rgba(34, 197, 139, 0.12);
+        color: var(--green);
+      }
+
+      .pill.ok .dot {
+        background: var(--green);
+      }
+
+      .pill.bad {
+        background: rgba(255, 90, 90, 0.12);
+        color: var(--red);
+      }
+
+      .pill.bad .dot {
+        background: var(--red);
+      }
+
+      .mic-wrap {
+        display: grid;
+        place-items: center;
+        margin: 10px 0 6px;
+      }
+
+      .mic-btn {
+        width: 118px;
+        height: 118px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        background: radial-gradient(circle at 35% 30%, #eef4ff, var(--blue-soft));
+        box-shadow: 0 0 0 6px rgba(47, 111, 237, 0.08);
+        display: grid;
+        place-items: center;
+        gap: 6px;
+        color: var(--blue);
+        font-weight: 900;
+        transition: box-shadow 0.15s ease;
+      }
+
+      .mic-btn.muted {
+        color: var(--red);
+        background: radial-gradient(circle at 35% 30%, #fff0f0, #ffe4e4);
+      }
+
+      .mic-btn.talking {
+        box-shadow: 0 0 0 10px rgba(34, 197, 139, 0.18);
+      }
+
+      .mic-btn svg {
+        width: 34px;
+        height: 34px;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        margin: 16px 0 6px;
+      }
+
+      .toggle-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 44px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: #f8f9fc;
+        color: var(--text);
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .toggle-btn.off {
+        color: var(--red);
+        border-color: rgba(255, 90, 90, 0.3);
+        background: rgba(255, 90, 90, 0.06);
+      }
+
+      .nearby-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 18px 0 10px;
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 13px;
+      }
+
+      .count-badge {
+        display: inline-grid;
+        place-items: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--blue-soft);
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .nearby-list {
+        display: grid;
+        gap: 8px;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+
+      .nearby-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #f8f9fc;
+        border: 1px solid var(--line);
+      }
+
+      .nearby-item.talking {
+        border-color: rgba(34, 197, 139, 0.4);
+        background: rgba(34, 197, 139, 0.06);
+      }
+
+      .nearby-item .id {
+        direction: ltr;
+        unicode-bidi: isolate;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .nearby-item .dist {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .empty {
+        padding: 20px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="head">
+        <span class="brand">🎙️ VoiceBlox</span>
+        <span id="statusPill" class="pill"><span class="dot"></span><span id="statusText">جاري الاتصال</span></span>
+      </div>
+
+      <div class="mic-wrap">
+        <button id="micBtn" class="mic-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+            <path d="M5 10a7 7 0 0 0 14 0"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+          <span id="micLabel">شغال</span>
+        </button>
+      </div>
+
+      <div class="row">
+        <button id="speakerBtn" class="toggle-btn">🔊 <span>السماعة شغالة</span></button>
+        <button id="muteBtn" class="toggle-btn">🎤 <span>المايك شغال</span></button>
+      </div>
+
+      <div class="nearby-head">
+        <span>القريبين منك</span>
+        <span class="count-badge" id="nearbyCount">0</span>
+      </div>
+      <div class="nearby-list" id="nearbyList">
+        <div class="empty">مافي حد قريب منك الحين</div>
+      </div>
+    </div>
+
+    <script>
+      const RADIUS_FALLBACK = 60;
+      const myId = decodeURIComponent(location.pathname.replace(/^\//, "")) || "";
+
+      const el = {
+        statusPill: document.getElementById("statusPill"),
+        statusText: document.getElementById("statusText"),
+        micBtn: document.getElementById("micBtn"),
+        micLabel: document.getElementById("micLabel"),
+        speakerBtn: document.getElementById("speakerBtn"),
+        muteBtn: document.getElementById("muteBtn"),
+        nearbyCount: document.getElementById("nearbyCount"),
+        nearbyList: document.getElementById("nearbyList"),
+      };
+
+      const state = {
+        socket: null,
+        reconnectAttempt: 0,
+        localStream: null,
+        micEnabled: true,
+        speakerEnabled: true,
+        audioCtx: null,
+        analyser: null,
+        talking: false,
+        radius: RADIUS_FALLBACK,
+        players: new Map(), // id -> {x,y,z,lookX,lookZ,talking}
+        peers: new Map(),   // id -> { pc, gain, panner, audioEl }
+      };
+
+      if (!myId) {
+        el.statusText.textContent = "رابط غير صالح";
+        el.statusPill.className = "pill bad";
+      } else {
+        init();
+      }
+
+      async function init() {
+        connect();
+        await startMic();
+        bindControls();
+      }
+
+      // ---------------- WebSocket ----------------
+      function connect() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        state.socket = new WebSocket(`${protocol}//${location.host}/ws?id=${encodeURIComponent(myId)}`);
+
+        state.socket.onopen = () => {
+          state.reconnectAttempt = 0;
+          setStatus("ok", "متصل");
+        };
+
+        state.socket.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "snapshot") handleSnapshot(msg);
+          if (msg.type === "signal") handleSignal(msg);
+        };
+
+        state.socket.onclose = () => {
+          setStatus("bad", "إعادة الاتصال");
+          const delay = Math.min(8000, 700 * 2 ** state.reconnectAttempt);
+          state.reconnectAttempt += 1;
+          setTimeout(connect, delay);
+        };
+
+        state.socket.onerror = () => setStatus("bad", "خطأ اتصال");
+      }
+
+      function send(payload) {
+        if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+          state.socket.send(JSON.stringify(payload));
+        }
+      }
+
+      function setStatus(cls, text) {
+        el.statusPill.className = `pill ${cls}`;
+        el.statusText.textContent = text;
+      }
+
+      // ---------------- الميكروفون + كشف الكلام ----------------
+      async function startMic() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false,
+          });
+          state.localStream = stream;
+
+          state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const source = state.audioCtx.createMediaStreamSource(stream);
+          state.analyser = state.audioCtx.createAnalyser();
+          state.analyser.fftSize = 512;
+          source.connect(state.analyser);
+
+          detectTalkingLoop();
+        } catch (error) {
+          el.micLabel.textContent = "امنح إذن المايك";
+          el.micBtn.classList.add("muted");
+        }
+      }
+
+      function detectTalkingLoop() {
+        const data = new Uint8Array(state.analyser.frequencyBinCount);
+        const THRESHOLD = 14;
+
+        const tick = () => {
+          state.analyser.getByteFrequencyData(data);
+          const avg = data.reduce((sum, v) => sum + v, 0) / data.length;
+          const isTalking = state.micEnabled && avg > THRESHOLD;
+
+          if (isTalking !== state.talking) {
+            state.talking = isTalking;
+            el.micBtn.classList.toggle("talking", isTalking);
+            send({ type: "talking", talking: isTalking });
+          }
+
+          requestAnimationFrame(tick);
+        };
+
+        tick();
+      }
+
+      // ---------------- تحكم الواجهة ----------------
+      function bindControls() {
+        el.muteBtn.addEventListener("click", () => {
+          state.micEnabled = !state.micEnabled;
+          if (state.localStream) {
+            for (const track of state.localStream.getAudioTracks()) {
+              track.enabled = state.micEnabled;
+            }
+          }
+          el.muteBtn.classList.toggle("off", !state.micEnabled);
+          el.muteBtn.querySelector("span").textContent = state.micEnabled ? "المايك شغال" : "المايك مقفول";
+          el.micBtn.classList.toggle("muted", !state.micEnabled);
+          el.micLabel.textContent = state.micEnabled ? "شغال" : "مقفول";
+          if (!state.micEnabled) {
+            state.talking = false;
+            el.micBtn.classList.remove("talking");
+            send({ type: "talking", talking: false });
+          }
+        });
+
+        el.speakerBtn.addEventListener("click", () => {
+          state.speakerEnabled = !state.speakerEnabled;
+          el.speakerBtn.classList.toggle("off", !state.speakerEnabled);
+          el.speakerBtn.querySelector("span").textContent = state.speakerEnabled ? "السماعة شغالة" : "السماعة مقفولة";
+          for (const peer of state.peers.values()) {
+            peer.masterGain.gain.value = state.speakerEnabled ? 1 : 0;
+          }
+        });
+
+        el.micBtn.addEventListener("click", () => el.muteBtn.click());
+      }
+
+      // ---------------- بيانات المواقع والقرب ----------------
+      function handleSnapshot(msg) {
+        state.radius = Number(msg.nearbyRadius) || RADIUS_FALLBACK;
+        state.players = new Map(msg.players.map((p) => [p.id, p]));
+
+        const self = state.players.get(myId);
+        const nearby = [];
+
+        for (const p of msg.players) {
+          if (p.id === myId || !self) continue;
+          const distance = Math.hypot(p.x - self.x, p.y - self.y, p.z - self.z);
+          if (distance <= state.radius) nearby.push({ ...p, distance });
+        }
+
+        nearby.sort((a, b) => a.distance - b.distance);
+        renderNearby(nearby);
+        syncPeers(nearby, self);
+        updateAudioMix(nearby, self);
+      }
+
+      function renderNearby(nearby) {
+        el.nearbyCount.textContent = String(nearby.length);
+        el.nearbyList.replaceChildren();
+
+        if (nearby.length === 0) {
+          const div = document.createElement("div");
+          div.className = "empty";
+          div.textContent = "مافي حد قريب منك الحين";
+          el.nearbyList.append(div);
+          return;
+        }
+
+        for (const p of nearby) {
+          const row = document.createElement("div");
+          row.className = `nearby-item${p.talking ? " talking" : ""}`;
+          row.innerHTML = `
+            <span class="id">${escapeHtml(p.id)}</span>
+            <span class="dist">${p.talking ? "🎙️ " : ""}${Math.round(p.distance)} studs</span>
+          `;
+          el.nearbyList.append(row);
+        }
+      }
+
+      // ---------------- WebRTC ----------------
+      const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+
+      function syncPeers(nearby, self) {
+        if (!self) return;
+        const nearbyIds = new Set(nearby.map((p) => p.id));
+
+        // اقفل اتصالات اللاعبين اللي بعدوا
+        for (const [id, peer] of state.peers) {
+          if (!nearbyIds.has(id)) {
+            peer.pc.close();
+            peer.audioEl.remove();
+            state.peers.delete(id);
+          }
+        }
+
+        // افتح اتصال جديد للي جونا قريبين وما عندنا اتصال معاهم
+        // عشان ما يصير عرضين، بس اللي id أصغر أبجديًا هو اللي يبدأ الـ offer
+        for (const id of nearbyIds) {
+          if (state.peers.has(id)) continue;
+          if (myId < id) {
+            createPeer(id, true);
+          } else {
+            createPeer(id, false);
+          }
+        }
+      }
+
+      function createPeer(remoteId, isInitiator) {
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+        if (state.localStream) {
+          for (const track of state.localStream.getAudioTracks()) {
+            pc.addTrack(track, state.localStream);
+          }
+        }
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            send({ type: "signal", to: remoteId, data: { kind: "ice", candidate: event.candidate } });
+          }
+        };
+
+        const audioEl = document.createElement("audio");
+        audioEl.autoplay = true;
+        audioEl.style.display = "none";
+        document.body.append(audioEl);
+
+        let masterGain = null;
+        let panner = null;
+
+        pc.ontrack = (event) => {
+          const remoteStream = event.streams[0];
+          audioEl.srcObject = remoteStream;
+          audioEl.muted = true; // الصوت الحقيقي يطلع من Web Audio graph تحت، مو من العنصر نفسه
+
+          const source = state.audioCtx.createMediaStreamSource(remoteStream);
+          panner = state.audioCtx.createStereoPanner();
+          masterGain = state.audioCtx.createGain();
+          masterGain.gain.value = state.speakerEnabled ? 1 : 0;
+
+          source.connect(panner).connect(masterGain).connect(state.audioCtx.destination);
+
+          const peer = state.peers.get(remoteId);
+          if (peer) {
+            peer.panner = panner;
+            peer.masterGain = masterGain;
+          }
+        };
+
+        const peerRecord = { pc, audioEl, panner: null, masterGain: null };
+        state.peers.set(remoteId, peerRecord);
+
+        if (isInitiator) {
+          pc.onnegotiationneeded = async () => {
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              send({ type: "signal", to: remoteId, data: { kind: "offer", sdp: pc.localDescription } });
+            } catch (error) {
+              // تجاهل تعارضات negotiation العابرة
+            }
+          };
+        }
+
+        return peerRecord;
+      }
+
+      async function handleSignal(msg) {
+        const remoteId = msg.from;
+        const data = msg.data;
+        let peer = state.peers.get(remoteId);
+
+        if (!peer && data.kind === "offer") {
+          peer = createPeer(remoteId, false);
+        }
+        if (!peer) return;
+
+        if (data.kind === "offer") {
+          await peer.pc.setRemoteDescription(data.sdp);
+          const answer = await peer.pc.createAnswer();
+          await peer.pc.setLocalDescription(answer);
+          send({ type: "signal", to: remoteId, data: { kind: "answer", sdp: peer.pc.localDescription } });
+        } else if (data.kind === "answer") {
+          await peer.pc.setRemoteDescription(data.sdp);
+        } else if (data.kind === "ice" && data.candidate) {
+          try {
+            await peer.pc.addIceCandidate(data.candidate);
+          } catch {
+            // تجاهل مرشحات وصلت متأخرة بعد إغلاق الاتصال
+          }
+        }
+      }
+
+      // ---------------- مزج الصوت حسب المسافة والاتجاه ----------------
+      function updateAudioMix(nearby, self) {
+        if (!self) return;
+
+        const forward = normalize(self.lookX ?? 0, self.lookZ ?? 1);
+
+        for (const p of nearby) {
+          const peer = state.peers.get(p.id);
+          if (!peer || !peer.panner || !peer.masterGain) continue;
+
+          const toRemote = normalize(p.x - self.x, p.z - self.z);
+          const cross = forward.x * toRemote.z - forward.z * toRemote.x;
+          const pan = clamp(cross, -1, 1);
+
+          const falloff = clamp(1 - p.distance / state.radius, 0, 1);
+          const volume = state.speakerEnabled ? Math.pow(falloff, 1.4) : 0;
+
+          peer.panner.pan.setTargetAtTime(pan, state.audioCtx.currentTime, 0.15);
+          peer.masterGain.gain.setTargetAtTime(volume, state.audioCtx.currentTime, 0.2);
+        }
+      }
+
+      function normalize(x, z) {
+        const len = Math.hypot(x, z) || 1;
+        return { x: x / len, z: z / len };
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[char]));
+      }
+    </script>
+  </body>
+</html>
