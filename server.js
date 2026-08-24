@@ -2,15 +2,16 @@ const express = require("express");
 const app = express();
 
 const CLIENT_ID = "5157939756697645911";
-const CLIENT_SECRET = "RBX--9nJyrEPykGkms24o0s4poSv9018xR8-ABUnuf60WBz5NNo_d3uQUqSdePCSuEwm";
+// الـ Secret الجديد اللي انت بعته
+const CLIENT_SECRET = "RBX--9nJyrEPykGkms24o0s4plr6m1x6fowkobXf1s8aORc_kKzqM_LqssD-NE0XWNTe";
 
-// الرابط المظبوط المباشر
-const REDIRECT_URI = "https://roblox-voice-server2.vercel.app/api/server/oauth/callback";
+// رابط Vercel الحقيقي بتاعك
+const REDIRECT_URI = "https://roblox-voice-server2.vercel.app/oauth/callback";
 
 app.use(express.json());
 
 // 1. رابط التوجيه لروبلوكس
-app.get("/api/server/login", (req, res) => {
+app.get("/login", (req, res) => {
   const robloxUrl = new URL("https://apis.roblox.com/oauth/v1/authorize");
   robloxUrl.searchParams.set("client_id", CLIENT_ID);
   robloxUrl.searchParams.set("redirect_uri", REDIRECT_URI);
@@ -21,7 +22,7 @@ app.get("/api/server/login", (req, res) => {
 });
 
 // 2. استقبال النتيجة من روبلوكس
-app.get("/api/server/oauth/callback", async (req, res) => {
+app.get("/oauth/callback", async (req, res) => {
   const code = req.query.code;
   if (!code) return res.status(400).send("Authorization Code Missing");
 
@@ -67,7 +68,7 @@ app.get("*", (req, res) => {
     <div style="background:#0f172a;color:#fff;height:100vh;display:flex;justify-content:center;align-items:center;font-family:sans-serif;">
       <div style="background:#1e293b;padding:40px;border-radius:10px;text-align:center;">
         <h2>ربط حساب Roblox بالشات الصوتي</h2>
-        <a href="/api/server/login" style="background:#0284c7;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:15px;">تسجيل الدخول عبر Roblox 🚀</a>
+        <a href="/login" style="background:#0284c7;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:15px;">تسجيل الدخول عبر Roblox 🚀</a>
       </div>
     </div>
   `);
