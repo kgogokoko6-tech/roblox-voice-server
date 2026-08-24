@@ -1,7 +1,7 @@
-import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
-import cors from "cors";
+import express from "npm:express";
+import { createServer } from "node:http";
+import { Server } from "npm:socket.io";
+import cors from "npm:cors";
 
 const app = express();
 app.use(cors());
@@ -21,32 +21,47 @@ function generateCode() {
   return code;
 }
 
-// 1. استقبال طلب كود جديد من روبلوكس عند دخول اللاعب
+// قراءة ملف index.html وإرساله للمتصفح
+app.get("/", async (req, res) => {
+  try {
+    const html = await Deno.readTextFile("./index.html");
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (e) {
+    res.status(500).send("ملاحظة: تأكد من رفع ملف index.html على GitHub");
+  }
+});
+
+// استقبال طلب الكود من روبلوكس
 app.post("/api/register-code", (req, res) => {
   const { userId, username } = req.body;
+  if (!userId || !username) return res.status(400).json({ error: "بيانات ناقصة" });
+
   const code = generateCode();
   authCodes.set(code, { userId: String(userId), username, expiresAt: Date.now() + 10 * 60 * 1000 });
+  
+  console.log(`تم إنشاء كود جديد للاعب ${username}: ${code}`);
   res.json({ success: true, code });
 });
 
-// 2. التحقق من الكود المدخل في الموقع
+// التحقق من الكود
 app.post("/api/verify-code", (req, res) => {
   const { code } = req.body;
   const cleanCode = (code || "").trim().toUpperCase();
   const session = authCodes.get(cleanCode);
 
   if (!session || Date.now() > session.expiresAt) {
-    return res.status(400).json({ error: "الكود غير صحيح أو انتهت صلاحيته (10 دقائق)" });
+    return res.status(400).json({ error: "الكود غير صحيح أو انتهت صلاحيته" });
   }
   res.json({ success: true, user: session });
 });
 
-// 3. استقبال أماكن وإحداثيات اللاعبين من الماب
+// تحديث إحداثيات اللاعبين
 app.post("/api/update-positions", (req, res) => {
   const { positions } = req.body;
   io.emit("positions-updated", positions);
   res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 8000;
-server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+const PORT = Deno.env.get("PORT") || 8000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
