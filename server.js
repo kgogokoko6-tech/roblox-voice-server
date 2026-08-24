@@ -11,6 +11,9 @@ app.use(express.json());
 const activeCodes = new Map();
 const connectedUsers = new Map();
 
+// إخفاء خطأ favicon
+app.get("/favicon.ico", (req, res) => res.status(204).end());
+
 // 1. استقبال وتوليد كود التفعيل من روبلوكس
 app.post("/generate-code", (req, res) => {
   const { userId, username } = req.body;
@@ -32,7 +35,7 @@ app.post("/update-positions", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 3. الصفحة الأساسية برابط الدومين مباشرة
+// 3. الصفحة الأساسية
 app.get("/", (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -97,7 +100,8 @@ app.get("/", (req, res) => {
     .player-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 12px; color: #334155; }
     .dots { color: #94a3b8; letter-spacing: 2px; }
   </style>
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- استدعاء المكتبة من CDN ثابت بدلاً من السيرفر المباشر -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
 
