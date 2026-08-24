@@ -1,27 +1,214 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <title>VoiceBlox Live Bridge</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-</head>
-<body>
-    <h2>اللاعبون المتصلون حالياً في الماب:</h2>
-    <ul id="playersList"></ul>
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
-    <script>
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+app.use(express.json());
+
+const activeCodes = new Map();
+const connectedUsers = new Map();
+
+app.post("/generate-code", (req, res) => {
+  const { userId, username } = req.body;
+  if (!userId || !username) return res.status(400).json({ error: "بيانات غير مكتملة" });
+
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  activeCodes.set(code, { userId, username, expiresAt });
+  res.json({ success: true, code });
+});
+
+app.post("/update-positions", (req, res) => {
+  const { players } = req.body;
+  if (Array.isArray(players)) {
+    io.emit("positions-update", players);
+  }
+  res.json({ status: "ok" });
+});
+
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>VoiceBlox - Proximity Voice Chat</title>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tajawal', sans-serif; }
+        body { background-color: #f6f8fb; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #1e293b; }
+        
+        .logo-header { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 22px; color: #0f172a; margin-bottom: 24px; }
+        .logo-icon { display: flex; gap: 3px; align-items: center; height: 20px; }
+        .bar { width: 3px; background: #2563eb; border-radius: 2px; }
+        .bar:nth-child(1) { height: 12px; }
+        .bar:nth-child(2) { height: 20px; }
+        .bar:nth-child(3) { height: 10px; }
+
+        .card { background: #ffffff; width: 380px; padding: 32px 28px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01); text-align: center; border: 1px solid #f1f5f9; }
+        
+        /* شاشة تسجيل الدخول */
+        .title { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+        .subtitle { font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom: 24px; }
+        
+        .btn-roblox { width: 100%; background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-roblox:hover { background: #1d4ed8; }
+        
+        .divider { display: flex; align-items: center; text-align: center; color: #94a3b8; font-size: 12px; margin: 20px 0; font-weight: 500; }
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid #e2e8f0; }
+        .divider::before { margin-left: .5em; }
+        .divider::after { margin-right: .5em; }
+        
+        .input-label { text-align: right; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; display: block; }
+        .code-input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 18px; letter-spacing: 4px; font-weight: 700; color: #0f172a; outline: none; transition: 0.2s; text-transform: uppercase; }
+        .code-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        
+        .btn-connect { width: 100%; background: #ffffff; color: #334155; border: 1px solid #cbd5e1; padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 12px; transition: 0.2s; }
+        .btn-connect:hover { background: #f8fafc; border-color: #94a3b8; }
+        
+        .footer-note { font-size: 11px; color: #94a3b8; line-height: 1.6; margin-top: 20px; }
+
+        /* شاشة التحكم في المايك */
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; color: #10b981; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; }
+
+        .mic-circle { width: 100px; height: 100px; border-radius: 50%; background: #eff6ff; border: 2px solid #bfdbfe; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 24px auto; color: #2563eb; transition: 0.3s; }
+        .mic-circle svg { width: 28px; height: 28px; fill: currentColor; }
+        .mic-circle span { font-size: 12px; font-weight: 600; margin-top: 4px; }
+
+        .mic-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 24px; }
+        .btn-action { padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
+        .btn-mute { background: #fef2f2; color: #ef4444; }
+        .btn-deafen { background: #f1f5f9; color: #64748b; }
+
+        .nearby-title { text-align: right; font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 10px; }
+        .players-list { display: flex; flex-direction: column; gap: 8px; max-height: 140px; overflow-y: auto; }
+        .player-item { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border: 1px solid #f1f5f9; font-size: 13px; font-weight: 500; color: #334155; }
+        .player-dist { font-size: 11px; color: #94a3b8; }
+
+        .hidden { display: none !important; }
+      </style>
+      <script src="/socket.io/socket.io.js"></script>
+    </head>
+    <body>
+
+      <div class="card-container">
+        <!-- HEADER LOGO -->
+        <div class="logo-header">
+          <div class="logo-icon">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <span>VoiceBlox</span>
+        </div>
+
+        <!-- 1. LOGIN CARD -->
+        <div class="card" id="login-card">
+          <div class="title">Connect your mic</div>
+          <div class="subtitle">Sign in with Roblox, or use the code shown in the game</div>
+          
+          <button class="btn-roblox">Sign in with Roblox</button>
+          
+          <div class="divider">OR</div>
+          
+          <label class="input-label">Code from the game</label>
+          <input type="text" id="code-input" class="code-input" placeholder="A1B2C3" maxlength="6">
+          
+          <button class="btn-connect" onclick="connectWithCode()">Connect with code</button>
+          
+          <div class="footer-note">
+            Codes come from the in-game panel and expire after 10 minutes. Signing in with Roblox stays linked for good.
+          </div>
+        </div>
+
+        <!-- 2. VOICE DASHBOARD CARD -->
+        <div class="card hidden" id="voice-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="status-badge"><div class="status-dot"></div> متصل</div>
+            <div style="font-weight: 700; font-size: 14px;" id="username-display">VoiceBlox</div>
+          </div>
+
+          <div class="mic-circle" id="mic-status">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            <span>شغال</span>
+          </div>
+
+          <div class="mic-actions">
+            <button class="btn-action btn-mute">🎙️ المايك مقفل</button>
+            <button class="btn-action btn-deafen">🎧 السبيكر</button>
+          </div>
+
+          <div class="nearby-title">القريبين منك</div>
+          <div class="players-list" id="players-list">
+            <div class="player-item">
+              <span>جاري البحث عن لاعبين...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
         const socket = io();
 
-        -- الاستماع للتحديثات القادمة من روبلوكس عبر السيرفر
-        socket.on("positions-updated", (positions) => {
-            const list = document.getElementById("playersList");
-            list.innerHTML = "";
-            positions.forEach(p => {
-                const li = document.createElement("li");
-                li.textContent = `اللاعب: ${p.username} | الإحداثيات: (${p.x}, ${p.y}, ${p.z})`;
-                list.appendChild(li);
-            });
+        function connectWithCode() {
+          const codeInput = document.getElementById("code-input");
+          const code = codeInput.value.trim().toUpperCase();
+          
+          if (!code) return alert("الرجاء إدخال الكود أولاً");
+
+          socket.emit("verify-code", code);
+        }
+
+        socket.on("auth-success", (data) => {
+          document.getElementById("login-card").classList.add("hidden");
+          document.getElementById("voice-card").classList.remove("hidden");
+          document.getElementById("username-display").innerText = data.username;
         });
-    </script>
-</body>
-</html>
+
+        socket.on("auth-failed", (msg) => {
+          alert(msg);
+        });
+
+        socket.on("positions-update", (players) => {
+          const list = document.getElementById("players-list");
+          list.innerHTML = "";
+          
+          if (players.length === 0) {
+            list.innerHTML = '<div class="player-item">لا يوجد لاعبين قريبين</div>';
+            return;
+          }
+
+          players.forEach(p => {
+            const item = document.createElement("div");
+            item.className = "player-item";
+            item.innerHTML = '<span>' + p.username + '</span><span class="player-dist">قريب</span>';
+            list.appendChild(item);
+          });
+        });
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+io.on("connection", (socket) => {
+  socket.on("verify-code", (code) => {
+    const data = activeCodes.get(code);
+    if (data && Date.now() < data.expiresAt) {
+      connectedUsers.set(socket.id, data);
+      activeCodes.delete(code);
+      socket.emit("auth-success", data);
+    } else {
+      socket.emit("auth-failed", "الكود غير صحيح أو انتهت صلاحيته");
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log("Voice Server is running on port " + PORT));
