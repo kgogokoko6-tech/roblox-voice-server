@@ -1,23 +1,20 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+import express from "npm:express@4";
+import { createServer } from "node:http";
+import { Server } from "npm:socket.io@4";
 
 const app = express();
-const server = http.createServer(app);
+const server = createServer(app);
 
-// إعدادات السوكت مع سماح تام للـ CORS
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// إعدادات Middleware للتعامل مع الـ JSON والـ CORS
 app.use(express.json());
+
+// إعدادات CORS الشاملة لمنع أي رفض من طلبات روبلوكس
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  res.header("Access-Control-Allow-Headers", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
@@ -26,12 +23,16 @@ app.use((req, res, next) => {
 const activeCodes = new Map();
 const connectedUsers = new Map();
 
-// إخفاء خطأ favicon التلقائي
 app.get("/favicon.ico", (req, res) => res.status(204).end());
+
+// نقطة اختبار للتحقق من عمل السيرفر عبر المتصفح
+app.get("/test", (req, res) => {
+  res.send("Server is Online!");
+});
 
 // 1. استقبال طلب الكود من روبلوكس
 app.post("/generate-code", (req, res) => {
-  console.log("Received auth request from Roblox:", req.body);
+  console.log("Received request from Roblox:", req.body);
   const { userId, username } = req.body || {};
 
   if (!userId || !username) {
@@ -39,24 +40,15 @@ app.post("/generate-code", (req, res) => {
   }
 
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-  const expiresAt = Date.now() + 10 * 60 * 1000; // صلاحية 10 دقائق
+  const expiresAt = Date.now() + 10 * 60 * 1000;
 
   activeCodes.set(code, { userId, username, expiresAt });
-  console.log(`Generated code ${code} for ${username}`);
+  console.log(`Code generated: ${code} for ${username}`);
 
   res.json({ success: true, code });
 });
 
-// 2. تحديث مواقع اللاعبين من روبلوكس
-app.post("/update-positions", (req, res) => {
-  const { players } = req.body || {};
-  if (Array.isArray(players)) {
-    io.emit("positions-update", players);
-  }
-  res.json({ status: "ok" });
-});
-
-// 3. الواجهة الرئيسية للويب
+// 2. الصفحة الرئيسية للويب
 app.get("/", (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -101,9 +93,6 @@ app.get("/", (req, res) => {
     .btn-action { padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; }
     .btn-red { background: #fef2f2; color: #ef4444; }
     .btn-gray { background: #f8fafc; color: #64748b; border: 1px solid #f1f5f9; }
-    .nearby-section { text-align: right; }
-    .nearby-header { font-size: 11px; font-weight: 600; color: #94a3b8; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
-    .player-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 12px; color: #334155; }
   </style>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
@@ -161,7 +150,7 @@ app.get("/", (req, res) => {
   `);
 });
 
-// 4. ربط السوكت للتحقق
+// 3. ربط WebSocket للتحقق
 io.on("connection", (socket) => {
   socket.on("verify-code", (code) => {
     const data = activeCodes.get(code);
@@ -175,5 +164,5 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 8000;
+const PORT = Deno.env.get("PORT") || 8000;
 server.listen(PORT, () => console.log("Server listening on port " + PORT));
