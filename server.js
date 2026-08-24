@@ -4,8 +4,8 @@ const app = express();
 const CLIENT_ID = "5157939756697645911";
 const CLIENT_SECRET = "RBX--9nJyrEPykGkms24o0s4poSv9018xR8-ABUnuf60WBz5NNo_d3uQUqSdePCSuEwm";
 
-// غير الرابط ده لرابط مشروعك على Vercel
-const REDIRECT_URI = "https://YOUR-VERCEL-DOMAIN.vercel.app/api/server/oauth/callback";
+// الرابط المظبوط المباشر
+const REDIRECT_URI = "https://roblox-voice-server2.vercel.app/api/server/oauth/callback";
 
 app.use(express.json());
 
