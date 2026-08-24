@@ -1,1 +1,8 @@
-
+{
+  "name": "roblox-voice-auth",
+  "version": "1.0.0",
+  "main": "api/server.js",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
