@@ -2,52 +2,26 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoiceBlox - Proximity Voice Chat</title>
+    <title>VoiceBlox Live Bridge</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        body { background-color: #f4f6fc; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #333; }
-        .card { background: #ffffff; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); width: 380px; padding: 35px 30px; text-align: center; }
-        .logo { font-weight: 800; font-size: 22px; color: #111; margin-bottom: 25px; }
-        .title { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #0f172a; }
-        .subtitle { font-size: 13px; color: #64748b; margin-bottom: 25px; }
-        .btn-roblox { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 10px; font-weight: 600; cursor: pointer; }
-        .divider { display: flex; align-items: center; margin: 20px 0; color: #94a3b8; font-size: 12px; }
-        .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #e2e8f0; }
-        .divider span { padding: 0 10px; }
-        .code-input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; text-align: center; font-size: 18px; letter-spacing: 4px; font-weight: 700; text-transform: uppercase; margin-bottom: 15px; outline: none; }
-        .btn-connect { width: 100%; background: #ffffff; border: 1px solid #cbd5e1; color: #334155; padding: 12px; border-radius: 10px; font-weight: 600; cursor: pointer; }
-        .info-text { font-size: 11px; color: #94a3b8; margin-top: 20px; line-height: 1.6; }
-        .hidden { display: none !important; }
-    </style>
 </head>
 <body>
-    <div id="loginCard" class="card">
-        <div class="logo"><span style="color:#2563eb">|||</span> VoiceBlox</div>
-        <h2 class="title">Connect your mic</h2>
-        <p class="subtitle">Sign in with Roblox, or use the code shown in the game</p>
-        <button class="btn-roblox">Sign in with Roblox</button>
-        <div class="divider"><span>OR</span></div>
-        <input type="text" id="codeInput" class="code-input" placeholder="A1B2C3" maxlength="6">
-        <button class="btn-connect" onclick="connectWithCode()">Connect with code</button>
-        <p class="info-text">Codes come from the in-game panel and expire after 10 minutes.</p>
-    </div>
+    <h2>اللاعبون المتصلون حالياً في الماب:</h2>
+    <ul id="playersList"></ul>
 
     <script>
-        async function connectWithCode() {
-            const code = document.getElementById('codeInput').value.trim();
-            if(!code) return alert('أدخل الكود');
-            const res = await fetch('/api/verify-code', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code })
+        const socket = io();
+
+        -- الاستماع للتحديثات القادمة من روبلوكس عبر السيرفر
+        socket.on("positions-updated", (positions) => {
+            const list = document.getElementById("playersList");
+            list.innerHTML = "";
+            positions.forEach(p => {
+                const li = document.createElement("li");
+                li.textContent = `اللاعب: ${p.username} | الإحداثيات: (${p.x}, ${p.y}, ${p.z})`;
+                list.appendChild(li);
             });
-            const data = await res.json();
-            if(data.success) alert('تم الاتصال بنجاح باللاعب: ' + data.user.username);
-            else alert(data.error);
-        }
+        });
     </script>
 </body>
 </html>
