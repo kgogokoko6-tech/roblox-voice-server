@@ -2,75 +2,70 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>اختبار إرسال الإشارة لروبلوكس</title>
+    <title>لوحة التحكم بالصوت</title>
     <style>
         body {
             font-family: Tahoma, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
+            background-color: #0f172a;
+            color: #f8fafc;
             text-align: center;
-            padding-top: 50px;
+            padding-top: 100px;
         }
         button {
-            background-color: #28a745;
+            background-color: #3b82f6;
             color: white;
             border: none;
-            padding: 15px 30px;
-            font-size: 18px;
+            padding: 15px 35px;
+            font-size: 20px;
             cursor: pointer;
-            border-radius: 8px;
+            border-radius: 12px;
+            transition: 0.2s;
         }
         button:hover {
-            background-color: #218838;
+            background-color: #2563eb;
         }
         #status {
-            margin-top: 20px;
-            font-size: 16px;
+            margin-top: 25px;
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
 
-    <h1>لوحة تحكم اختبار الاتصال بالماب</h1>
-    <p>اضغط على الزر لإرسال أمر إظهار النص جوة اللعبة:</p>
+    <h1>إدارة ماب بيمش1</h1>
+    <p>اضغط للتحكم في ظهور (VoiceWebsiteText) جوة اللعبة:</p>
     
-    <button onclick="sendSignal()">إرسال إشارة إظهار النص</button>
+    <button onclick="triggerRoblox()">إظهار النص في الماب</button>
     <div id="status"></div>
 
     <script>
-        async function sendSignal() {
-            const universeId = "10223096210";
-            const apiKey = "aL9JyK/ABkew9jTQYkT3irrojh0vGRS8UYZW9xj2TU8gr2abZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1GTU9VcDVTeTlCUW10bGR6bHFWRkZaYTFRemFYSnliMnBvTUhaSFVsTTRWVmxhVnpsNGFqSlVWVGhuY2pKaFlpSXNJbTkzYm1WeVNXUWlPaUl4TURBMk16YzFPVGswTkNJc0ltVjRjQ0k2TVRjNE9ERTJNREExTXl3aWFXRjBJam94TnpnNE1UVTJORFV6TENKdVltWWlPakUzT0RneE5UWTBOVE45LlkwZmF5Ql9CdTE5Q2pvV2Mtb2hoUTBmb3QzT2RBS3NYNG5fUzFLLXQzb0ZSMmpubmlTYWhlcXA5dU03SWJUNHJRTVEzUHJSM3NhSG5aMWhueW02UVljdFNOUWlleGdUVlBJUUU1YlB6Rm5fZHFVelpfbkk4dERiYXVRek1HQWh4TGdTaHZGMVZrU1lOUXBEWWpmX1NZeTZVUThVc0tqRWxhdW1GTTNuX3hLNEFVVzl1bjRIN3JvMUdxRUpVWld6ZGI5b2FKQ2ZfeWJYelgtSVpFWGp4bTI0ZFc0ZWNSRkpILTFBS3VIcElwTmpBNzVtczNPbWN0YVAyV2FrRTR1X3ZTRVRBVGF0SVlVSXdfYmJJSG1EQ2J2Tkc2NDdGSGdWb3dqamZvQWhvQmJPeWpYdnBmc3VKNmE0em5fRHBYWnJlRXZ1cVI3X0dSX3VpVTQwamRyOFVSUQ==";
-            
-            const topic = "VoiceChatSignalChannel";
-            const url = `https://apis.roblox.com/messaging-service/v1/universes/${universeId}/topics/${topic}`;
-
+        async function triggerRoblox() {
             const statusDiv = document.getElementById("status");
-            statusDiv.innerText = "جاري الإرسال...";
+            statusDiv.innerText = "جاري إرسال الطلب للسيرفر...";
+            statusDiv.style.color = "#fbbf24";
 
             try {
-                const response = await fetch(url, {
+                // حط هنا رابط السيرفر بتاعك لما ترفعه (مثلاً https://my-bot-server.onrender.com/api/trigger-voice)
+                // ولو بتجربه محلياً على جهازك سيبه زي ما هو:
+                const response = await fetch("http://localhost:3000/api/trigger-voice", {
                     method: "POST",
                     headers: {
-                        "x-api-key": apiKey,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        action: "ShowVoiceText"
-                    })
+                        "Content-Type": "application/json"
+                    }
                 });
 
-                if (response.ok) {
-                    statusDiv.innerText = "✅ تم إرسال الإشارة بنجاح للماب!";
-                    statusDiv.style.color = "#28a745";
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerText = "✅ تم إرسال الإشارة للماب بنجاح!";
+                    statusDiv.style.color = "#4ade80";
                 } else {
-                    const errText = await response.text();
-                    statusDiv.innerText = "❌ فشل الإرسال: " + errText;
-                    statusDiv.style.color = "#dc3545";
+                    statusDiv.innerText = "❌ فشل من السيرفر: " + (data.error || "خطأ غير معروف");
+                    statusDiv.style.color = "#f87171";
                 }
             } catch (error) {
-                statusDiv.innerText = "❌ حدث خطأ في الشبكة (تحقق من الـ CORS أو الاتصال)";
-                statusDiv.style.color = "#dc3545";
+                statusDiv.innerText = "❌ تعذر الاتصال بالسيرفر الداخلي (تأكد إنه شغال)";
+                statusDiv.style.color = "#f87171";
                 console.error(error);
             }
         }
