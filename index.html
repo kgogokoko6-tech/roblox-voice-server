@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>لوحة التحكم بالصوت</title>
+    <title>تحكم صوت الماب</title>
     <style>
         body {
             font-family: Tahoma, sans-serif;
@@ -45,9 +45,7 @@
             statusDiv.style.color = "#fbbf24";
 
             try {
-                // حط هنا رابط السيرفر بتاعك لما ترفعه (مثلاً https://my-bot-server.onrender.com/api/trigger-voice)
-                // ولو بتجربه محلياً على جهازك سيبه زي ما هو:
-                const response = await fetch("http://localhost:3000/api/trigger-voice", {
+                const response = await fetch("http://localhost:5000/api/trigger-voice", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -64,7 +62,7 @@
                     statusDiv.style.color = "#f87171";
                 }
             } catch (error) {
-                statusDiv.innerText = "❌ تعذر الاتصال بالسيرفر الداخلي (تأكد إنه شغال)";
+                statusDiv.innerText = "❌ تعذر الاتصال بالسيرفر الداخلي (تأكد إن node server.js شغال)";
                 statusDiv.style.color = "#f87171";
                 console.error(error);
             }
