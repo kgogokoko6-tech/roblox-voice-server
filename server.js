@@ -1,77 +1,43 @@
 const express = require("express");
+const cors = require("cors");
 const app = express();
 
-const CLIENT_ID = "5157939756697645911";
-// الـ Secret الجديد اللي انت بعته
-const CLIENT_SECRET = "RBX--9nJyrEPykGkms24o0s4plr6m1x6fowkobXf1s8aORc_kKzqM_LqssD-NE0XWNTe";
-
-// رابط Vercel الحقيقي بتاعك
-const REDIRECT_URI = "https://roblox-voice-server2.vercel.app/oauth/callback";
-
 app.use(express.json());
+app.use(cors()); // بيسمح لموقعك إنه يكلم السيرفر ده بحرية
 
-// 1. رابط التوجيه لروبلوكس
-app.get("/login", (req, res) => {
-  const robloxUrl = new URL("https://apis.roblox.com/oauth/v1/authorize");
-  robloxUrl.searchParams.set("client_id", CLIENT_ID);
-  robloxUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-  robloxUrl.searchParams.set("scope", "openid profile");
-  robloxUrl.searchParams.set("response_type", "code");
+const UNIVERSE_ID = "10223096210";
+const API_KEY = "aL9JyK/ABkew9jTQYkT3irrojh0vGRS8UYZW9xj2TU8gr2abZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1GTU9VcDVTeTlCUW10bGR6bHFWRkZaYTFRemFYSnliMnBvTUhaSFVsTTRWVmxhVnpsNGFqSlVWVGhuY2pKaFlpSXNJbTkzYm1WeVNXUWlPaUl4TURBMk16YzFPVGswTkNJc0ltVjRjQ0k2TVRjNE9ERTJNREExTXl3aWFXRjBJam94TnpnNE1UVTJORFV6TENKdVltWWlPakUzT0RneE5UWTBOVE45LlkwZmF5Ql9CdTE5Q2pvV2Mtb2hoUTBmb3QzT2RBS3NYNG5fUzFLLXQzb0ZSMmpubmlTYWhlcXA5dU03SWJUNHJRTVEzUHJSM3NhSG5aMWhueW02UVljdFNOUWlleGdUVlBJUUU1YlB6Rm5fZHFVelpfbkk4dERiYXVRek1HQWh4TGdTaHZGMVZrU1lOUXBEWWpmX1NZeTZVUThVc0tqRWxhdW1GTTNuX3hLNEFVVzl1bjRIN3JvMUdxRUpVWld6ZGI5b2FKQ2ZfeWJYelgtSVpFWGp4bTI0ZFc0ZWNSRkpILTFBS3VIcElwTmpBNzVtczNPbWN0YVAyV2FrRTR1X3ZTRVRBVGF0SVlVSXdfYmJJSG1EQ2J2Tkc2NDdGSGdWb3dqamZvQWhvQmJPeWpYdnBmc3VKNmE0em5fRHBYWnJlRXZ1cVI3X0dSX3VpVTQwamRyOFVSUQ==";
 
-  return res.redirect(robloxUrl.toString());
+// مسار يستقبل الأمر من موقعك ويبعته لروبلوكس
+app.post("/api/trigger-voice", async (req, res) => {
+    const topic = "VoiceChatSignalChannel";
+    const url = `https://apis.roblox.com/messaging-service/v1/universes/${UNIVERSE_ID}/topics/${topic}`;
+
+    try {
+        const robloxRes = await fetch(url, {
+            method: "POST",
+            headers: {
+                "x-api-key": API_KEY,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ action: "ShowVoiceText" })
+        });
+
+        if (robloxRes.ok) {
+            console.log("✅ تم إرسال الإشارة للماب بنجاح!");
+            res.json({ success: true, message: "تم إرسال الإشارة للماب بنجاح!" });
+        } else {
+            const errText = await robloxRes.text();
+            console.error("❌ خطأ من روبلوكس:", errText);
+            res.status(500).json({ success: false, error: errText });
+        }
+    } catch (error) {
+        console.error("❌ خطأ في الاتصال:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
-// 2. استقبال النتيجة من روبلوكس
-app.get("/oauth/callback", async (req, res) => {
-  const code = req.query.code;
-  if (!code) return res.status(400).send("Authorization Code Missing");
-
-  try {
-    const tokenRes = await fetch("https://apis.roblox.com/oauth/v1/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        grant_type: "authorization_code",
-        code: code,
-        redirect_uri: REDIRECT_URI
-      })
-    });
-
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) return res.status(400).json(tokenData);
-
-    const userRes = await fetch("https://apis.roblox.com/oauth/v1/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
-    });
-
-    const userData = await userRes.json();
-
-    return res.send(`
-      <div style="background:#0f172a;color:#fff;height:100vh;display:flex;justify-content:center;align-items:center;font-family:sans-serif;">
-        <div style="background:#1e293b;padding:30px;border-radius:10px;text-align:center;border:1px solid #334155;">
-          <h1 style="color:#38bdf8;">🟢 تم التوثيق بنجاح!</h1>
-          <p>أهلاً بك، <b>${userData.preferred_username || userData.name}</b></p>
-          <p>ID: <code>${userData.sub}</code></p>
-        </div>
-      </div>
-    `);
-  } catch (err) {
-    return res.status(500).send("Server Error: " + err.message);
-  }
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 السيرفر شغال على البورت ${PORT}`);
 });
-
-// 3. الصفحة الرئيسية
-app.get("*", (req, res) => {
-  res.send(`
-    <div style="background:#0f172a;color:#fff;height:100vh;display:flex;justify-content:center;align-items:center;font-family:sans-serif;">
-      <div style="background:#1e293b;padding:40px;border-radius:10px;text-align:center;">
-        <h2>ربط حساب Roblox بالشات الصوتي</h2>
-        <a href="/login" style="background:#0284c7;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:15px;">تسجيل الدخول عبر Roblox 🚀</a>
-      </div>
-    </div>
-  `);
-});
-
-module.exports = app;
