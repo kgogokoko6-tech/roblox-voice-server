@@ -1,74 +1,127 @@
+import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { Server } from "npm:socket.io@4.7.2";
 
-const port = parseInt(Deno.env.get("PORT") || "8080");
+const PORT = parseInt(Deno.env.get("PORT") || "8080");
+const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482"; // مفتاح المطابقة مع روبلوكس
+
+const app = new Application();
+const router = new Router();
+
+// تخزين بيانات اللاعبين القادمين من روبلوكس
+// linkCode -> { playerId, gameCode, position, muted, socketId, lastSeen }
+const activeLinks = new Map();
+// socketId -> linkCode
+const socketToLink = new Map();
+
+// 1. استقبال الـ Presence والبيانات من سيرفر روبلوكس (HTTP POST)
+router.post("/api/rooms/roblox-presence", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { gameCode, serverKey, players } = body;
+
+    // التحقق من مفتاح السيرفر للأمان
+    if (serverKey !== SERVER_KEY) {
+      ctx.response.status = 403;
+      ctx.response.body = { error: "Invalid ServerKey" };
+      return;
+    }
+
+    if (!players || !Array.isArray(players)) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "Invalid players data" };
+      return;
+    }
+
+    const now = Date.now();
+
+    // تحديث بيانات اللاعبين الحاليين في هذه اللعبة
+    players.forEach((p) => {
+      if (p.linkCode) {
+        const existing = activeLinks.get(p.linkCode) || {};
+        activeLinks.set(p.linkCode, {
+          playerId: p.playerId,
+          linkCode: p.linkCode,
+          displayName: p.displayName || p.playerId,
+          position: p.position || { x: 0, y: 0, z: 0 },
+          muted: p.muted,
+          gameCode: gameCode,
+          socketId: existing.socketId || null, // الحفاظ على ربط الـ WebSocket إذا كان متصلاً بالموقع
+          lastSeen: now
+        });
+      }
+    });
+
+    // تنظيف الأكواد القديمة التي لم ترسل تحديثاً لأكثر من 15 ثانية
+    for (const [code, data] of activeLinks.entries()) {
+      if (now - data.lastSeen > 15000) {
+        activeLinks.delete(code);
+      }
+    }
+
+    ctx.response.status = 200;
+    ctx.response.body = { success: true };
+  } catch (err) {
+    console.error("Error processing presence:", err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "Internal Server Error" };
+  }
+});
+
+app.use(router.routes());
+app.use(router.allowedMethods());
+
+// إعداد خادم الـ HTTP و Socket.io المتوافق مع Deno
+const denoServer = Deno.listen({ port: PORT });
+console.log(`Server running on port ${PORT}`);
+
+// دمج Oak مع Socket.io
 const io = new Server({
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// تخزين أكواد الربط المؤقتة واللاعبين
-const pendingCodes = new Map(); // code -> { userId, username, timestamp }
-const activePlayers = new Map(); // socket.id -> { userId, x, y, z, channel }
-
+// التعامل مع اتصالات الموقع (الويب) عبر Socket.io
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log(`Web client connected: ${socket.id}`);
 
-  // توليد كود ربط جديد من لعبة روبلوكس
-  socket.on("generate_code", (data) => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    pendingCodes.set(code, {
-      userId: data.userId,
-      username: data.username,
-      timestamp: Date.now()
-    });
-    
-    // تنحذف الكود تلقائياً بعد دقيقتين
-    setTimeout(() => pendingCodes.delete(code), 120000);
-    socket.emit("code_generated", { code });
-  });
-
-  // التحقق من الكود ودخول الموقع
+  // عندما يقوم المستخدم بكتابة الكود المكون من 10 خانات في الموقع
   socket.on("verify_code", (data, callback) => {
-    const playerData = pendingCodes.get(data.code);
+    const code = (data.code || "").trim().toUpperCase();
+    const playerData = activeLinks.get(code);
+
     if (!playerData) {
-      return callback({ success: false, message: "الكود غير صحيح أو انتهى." });
+      return callback({ success: false, message: "الكود غير صحيح، تأكد أنك في الماب وأن الكود ظاهر على الشاشة." });
     }
 
-    pendingCodes.delete(data.code);
-    activePlayers.set(socket.id, {
-      userId: playerData.userId,
-      username: playerData.username,
-      x: 0, y: 0, z: 0,
-      channel: data.channel || "default"
+    // ربط هذا الـ Socket بالكود واللاعب
+    playerData.socketId = socket.id;
+    socketToLink.set(socket.id, code);
+
+    callback({ 
+      success: true, 
+      userId: playerData.playerId,
+      displayName: playerData.displayName 
     });
 
-    callback({ success: true, userId: playerData.userId });
-    io.emit("peers_update", Array.from(activePlayers.values()));
+    console.log(`Player ${playerData.playerId} linked successfully with socket ${socket.id}`);
   });
 
-  // تحديث الموقع الإحداثي (X, Y, Z) من روبلوكس أو الموقع
-  socket.on("update_position", (pos) => {
-    const player = activePlayers.get(socket.id);
-    if (player) {
-      player.x = pos.x;
-      player.y = pos.y;
-      player.z = pos.z;
-      socket.broadcast.emit("player_moved", { socketId: socket.id, x: pos.x, y: pos.y, z: pos.z });
-    }
-  });
-
-  // توجيه إشارات WebRTC (Offer, Answer, ICE Candidates)
-  socket.on("rtc_signal", (data) => {
-    io.to(data.targetSocketId).emit("rtc_signal", {
-      senderSocketId: socket.id,
-      signal: data.signal
-    });
-  });
-
+  // استقبال تحديث الموقع أو الصوت من المتصفح إذا لزم الأمر
   socket.on("disconnect", () => {
-    activePlayers.delete(socket.id);
-    io.emit("peers_update", Array.from(activePlayers.values()));
-    console.log(`User disconnected: ${socket.id}`);
+    const code = socketToLink.get(socket.id);
+    if (code) {
+      const playerData = activeLinks.get(code);
+      if (playerData) {
+        playerData.socketId = null; // إلغاء ربط الـ socket فقط وابقاء بيانات اللاعب
+      }
+      socketToLink.delete(socket.id);
+    }
+    console.log(`Web client disconnected: ${socket.id}`);
   });
 });
 
-Deno.serve({ port }, io.handler());
+// تشغيل السيرفر ليستقبل طلبات HTTP و WebSocket معاً
+for await (const conn of denoServer) {
+  // معالجة الاتصالات عبر Deno HTTP handler و Socket.io
+  // (ملاحظة: Deno Deploy يدعم خوادم Oak و Socket.io بالشكل المعتاد)
+  handleConn(conn);
+}
