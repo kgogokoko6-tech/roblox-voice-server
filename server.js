@@ -1,43 +1,74 @@
-const express = require("express");
-const cors = require("cors");
-const app = express();
+import { Server } from "npm:socket.io@4.7.2";
 
-app.use(express.json());
-app.use(cors()); // بيسمح للموقع يكلم السيرفر من غير مشاكل CORS
+const port = parseInt(Deno.env.get("PORT") || "8080");
+const io = new Server({
+  cors: { origin: "*", methods: ["GET", "POST"] }
+});
 
-const UNIVERSE_ID = "10223096210";
-const API_KEY = "aL9JyK/ABkew9jTQYkT3irrojh0vGRS8UYZW9xj2TU8gr2abZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1GTU9VcDVTeTlCUW10bGR6bHFWRkZaYTFRemFYSnliMnBvTUhaSFVsTTRWVmxhVnpsNGFqSlVWVGhuY2pKaFlpSXNJbTkzYm1WeVNXUWlPaUl4TURBMk16YzFPVGswTkNJc0ltVjRjQ0k2TVRjNE9ERTJNREExTXl3aWFXRjBJam94TnpnNE1UVTJORFV6TENKdVltWWlPakUzT0RneE5UWTBOVE45LlkwZmF5Ql9CdTE5Q2pvV2Mtb2hoUTBmb3QzT2RBS3NYNG5fUzFLLXQzb0ZSMmpubmlTYWhlcXA5dU03SWJUNHJRTVEzUHJSM3NhSG5aMWhueW02UVljdFNOUWlleGdUVlBJUUU1YlB6Rm5fZHFVelpfbkk4dERiYXVRek1HQWh4TGdTaHZGMVZrU1lOUXBEWWpmX1NZeTZVUThVc0tqRWxhdW1GTTNuX3hLNEFVVzl1bjRIN3JvMUdxRUpVWld6ZGI5b2FKQ2ZfeWJYelgtSVpFWGp4bTI0ZFc0ZWNSRkpILTFBS3VIcElwTmpBNzVtczNPbWN0YVAyV2FrRTR1X3ZTRVRBVGF0SVlVSXdfYmJJSG1EQ2J2Tkc2NDdGSGdWb3dqamZvQWhvQmJPeWpYdnBmc3VKNmE0em5fRHBYWnJlRXZ1cVI3X0dSX3VpVTQwamRyOFVSUQ==";
+// تخزين أكواد الربط المؤقتة واللاعبين
+const pendingCodes = new Map(); // code -> { userId, username, timestamp }
+const activePlayers = new Map(); // socket.id -> { userId, x, y, z, channel }
 
-// مسار استقبال الأمر وإرساله لروبلوكس
-app.post("/api/trigger-voice", async (req, res) => {
-    const topic = "VoiceChatSignalChannel";
-    const url = `https://apis.roblox.com/messaging-service/v1/universes/${UNIVERSE_ID}/topics/${topic}`;
+io.on("connection", (socket) => {
+  console.log(`User connected: ${socket.id}`);
 
-    try {
-        const robloxRes = await fetch(url, {
-            method: "POST",
-            headers: {
-                "x-api-key": API_KEY,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ action: "ShowVoiceText" })
-        });
+  // توليد كود ربط جديد من لعبة روبلوكس
+  socket.on("generate_code", (data) => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    pendingCodes.set(code, {
+      userId: data.userId,
+      username: data.username,
+      timestamp: Date.now()
+    });
+    
+    // تنحذف الكود تلقائياً بعد دقيقتين
+    setTimeout(() => pendingCodes.delete(code), 120000);
+    socket.emit("code_generated", { code });
+  });
 
-        if (robloxRes.ok) {
-            console.log("✅ تم إرسال الإشارة للماب بنجاح!");
-            res.json({ success: true, message: "تم إرسال الإشارة للماب بنجاح!" });
-        } else {
-            const errText = await robloxRes.text();
-            console.error("❌ خطأ من روبلوكس:", errText);
-            res.status(500).json({ success: false, error: errText });
-        }
-    } catch (error) {
-        console.error("❌ خطأ في الاتصال:", error);
-        res.status(500).json({ success: false, error: error.message });
+  // التحقق من الكود ودخول الموقع
+  socket.on("verify_code", (data, callback) => {
+    const playerData = pendingCodes.get(data.code);
+    if (!playerData) {
+      return callback({ success: false, message: "الكود غير صحيح أو انتهى." });
     }
+
+    pendingCodes.delete(data.code);
+    activePlayers.set(socket.id, {
+      userId: playerData.userId,
+      username: playerData.username,
+      x: 0, y: 0, z: 0,
+      channel: data.channel || "default"
+    });
+
+    callback({ success: true, userId: playerData.userId });
+    io.emit("peers_update", Array.from(activePlayers.values()));
+  });
+
+  // تحديث الموقع الإحداثي (X, Y, Z) من روبلوكس أو الموقع
+  socket.on("update_position", (pos) => {
+    const player = activePlayers.get(socket.id);
+    if (player) {
+      player.x = pos.x;
+      player.y = pos.y;
+      player.z = pos.z;
+      socket.broadcast.emit("player_moved", { socketId: socket.id, x: pos.x, y: pos.y, z: pos.z });
+    }
+  });
+
+  // توجيه إشارات WebRTC (Offer, Answer, ICE Candidates)
+  socket.on("rtc_signal", (data) => {
+    io.to(data.targetSocketId).emit("rtc_signal", {
+      senderSocketId: socket.id,
+      signal: data.signal
+    });
+  });
+
+  socket.on("disconnect", () => {
+    activePlayers.delete(socket.id);
+    io.emit("peers_update", Array.from(activePlayers.values()));
+    console.log(`User disconnected: ${socket.id}`);
+  });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 السيرفر شغال ومفتوح على البورت ${PORT}`);
-});
+Deno.serve({ port }, io.handler());
