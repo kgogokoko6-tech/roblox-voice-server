@@ -2,7 +2,7 @@ import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { Server } from "npm:socket.io@4.7.2";
 
 const PORT = parseInt(Deno.env.get("PORT") || "8080");
-const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482"; // المفتاح المطابق للـ Config في روبلوكس
+const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482"; // المفتاح المطابق لروبلوكس
 
 const app = new Application();
 const router = new Router();
@@ -11,13 +11,13 @@ const router = new Router();
 const activeLinks = new Map(); // linkCode -> playerData
 const socketToLink = new Map(); // socketId -> linkCode
 
-// 1. استقبال الـ Presence والبيانات من سيرفر روبلوكس (HTTP POST)
+// 1. استقبال الـ Presence من سيرفر روبلوكس عبر HTTP POST
 router.post("/api/rooms/roblox-presence", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
     const { gameCode, serverKey, players } = body;
 
-    // التحقق من صحة مفتاح السيرفر للأمان
+    // التحقق من مفتاح الحماية
     if (serverKey !== SERVER_KEY) {
       ctx.response.status = 403;
       ctx.response.body = { error: "Invalid ServerKey" };
@@ -32,7 +32,7 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
 
     const now = Date.now();
 
-    // تحديث بيانات اللاعبين الحاليين
+    // تحديث إحداثيات وحالة كل لاعب
     players.forEach((p) => {
       if (p.linkCode) {
         const existing = activeLinks.get(p.linkCode) || {};
@@ -49,7 +49,7 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
       }
     });
 
-    // إزالة الأكواد غير النشطة (التي تجاوزت 15 ثانية بدون تحديث)
+    // حذف اللاعبين المنقطع إرسالهم (أكثر من 15 ثانية)
     for (const [code, data] of activeLinks.entries()) {
       if (now - data.lastSeen > 15000) {
         activeLinks.delete(code);
@@ -65,28 +65,25 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
   }
 });
 
+// تفعيل المسارات في Oak
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-// إعداد خادم الـ HTTP و Socket.io المتوافق مع Deno
-const denoServer = Deno.listen({ port: PORT });
-console.log(`Server running on port ${PORT}`);
-
+// إعداد Socket.io
 const io = new Server({
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// التعامل مع اتصالات الموقع عبر الـ WebSocket
 io.on("connection", (socket) => {
   console.log(`Web client connected: ${socket.id}`);
 
-  // التحقق من الكود المكون من 10 خانات الذي أدخله المستخدم في الموقع
+  // التحقق من الكود المكتوب في الموقع
   socket.on("verify_code", (data, callback) => {
     const code = (data.code || "").trim().toUpperCase();
     const playerData = activeLinks.get(code);
 
     if (!playerData) {
-      return callback({ success: false, message: "الكود غير صحيح أو منتهي الصلاحية. تأكد أنك داخل اللعبة وأن الكود ظاهر على شاشتك." });
+      return callback({ success: false, message: "الكود غير صحيح أو انتهت صلاحيته." });
     }
 
     playerData.socketId = socket.id;
@@ -98,7 +95,7 @@ io.on("connection", (socket) => {
       displayName: playerData.displayName 
     });
 
-    console.log(`Player ${playerData.playerId} successfully linked with socket ${socket.id}`);
+    console.log(`Player ${playerData.playerId} linked with socket ${socket.id}`);
   });
 
   socket.on("disconnect", () => {
@@ -114,17 +111,12 @@ io.on("connection", (socket) => {
   });
 });
 
-// تشغيل السيرفر ليستقبل الطلبات
-for await (const conn of denoServer) {
-  // معالجة تدفق الاتصالات
-  (async () => {
-    try {
-      const httpConn = Deno.serveHttp(conn);
-      for await (const requestEvent of httpConn) {
-        await app.handle(requestEvent.request);
-      }
-    } catch {
-      // تجاهل أخطاء الاتصالات العابرة
-    }
-  })();
-}
+// التشغيل السليم المتوافق مع Deno Deploy (معالجة طلبات HTTP والـ WebSockets معاً)
+Deno.serve({ port: PORT }, async (req) => {
+  if (req.url.includes("/socket.io/")) {
+    return io.engine.handleRequest(req);
+  }
+  return await app.handle(req) || new Response("Not Found", { status: 404 });
+});
+
+console.log(`Server running on port ${PORT}`);
