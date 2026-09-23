@@ -1,35 +1,34 @@
-import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
-import { Server } from "npm:socket.io@4.7.2";
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
-const PORT = parseInt(Deno.env.get("PORT") || "8080");
-const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482";
+const app = express();
+const server = createServer(app);
 
-const app = new Application();
-const router = new Router();
+// قراءة البورت والمفتاح من البيئة
+const PORT = process.env.PORT || 3000;
+const SERVER_KEY = process.env.ROBLOX_SERVER_KEY || "NOVA-482";
+
+app.use(express.json());
 
 const activeLinks = new Map(); // linkCode -> playerData
 const socketToLink = new Map(); // socketId -> linkCode
 
-// 1. استقبال الـ Presence من روبلوكس مع طباعة تفصيلية لتشخيص الخطأ
-router.post("/api/rooms/roblox-presence", async (ctx) => {
+// 1. استقبال الـ Presence من روبلوكس
+app.post("/api/rooms/roblox-presence", (req, res) => {
   try {
-    const body = await ctx.request.body({ type: "json" }).value;
+    const body = req.body;
     console.log("📥 استلام بيانات روبلوكس:", JSON.stringify(body));
 
     const { gameCode, serverKey, players } = body;
 
-    // التحقق من المفتاح (إذا واجهت خطأ، تأكد أن ROBLOX_SERVER_KEY في Deno Deploy يطابق Config في روبلوكس)
     if (serverKey !== SERVER_KEY) {
       console.warn(`⚠️ مفتاح غير مطابق! القادم: ${serverKey}, المتوقع: ${SERVER_KEY}`);
-      ctx.response.status = 403;
-      ctx.response.body = { error: "Invalid ServerKey" };
-      return;
+      return res.status(403).json({ error: "Invalid ServerKey" });
     }
 
     if (!players || !Array.isArray(players)) {
-      ctx.response.status = 400;
-      ctx.response.body = { error: "Invalid players data" };
-      return;
+      return res.status(400).json({ error: "Invalid players data" });
     }
 
     const now = Date.now();
@@ -56,19 +55,15 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
       }
     }
 
-    ctx.response.status = 200;
-    ctx.response.body = { success: true };
+    return res.status(200).json({ success: true });
   } catch (err) {
     console.error("❌ خطأ في معالجة Presence:", err);
-    ctx.response.status = 500;
-    ctx.response.body = { error: err.message };
+    return res.status(500).json({ error: err.message });
   }
 });
 
-app.use(router.routes());
-app.use(router.allowedMethods());
-
-const io = new Server({
+// إعداد Socket.io
+const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
@@ -106,15 +101,6 @@ io.on("connection", (socket) => {
   });
 });
 
-Deno.serve({ port: PORT }, async (req) => {
-  const url = new URL(req.url);
-  
-  // توجيه طلبات socket.io بالشكل الصحيح
-  if (url.pathname.startsWith("/socket.io/")) {
-    return io.engine.handleRequest(req);
-  }
-
-  return await app.handle(req) || new Response("Not Found", { status: 404 });
+server.listen(PORT, () => {
+  console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
 });
-
-console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
