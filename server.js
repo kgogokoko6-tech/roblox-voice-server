@@ -2,23 +2,25 @@ import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { Server } from "npm:socket.io@4.7.2";
 
 const PORT = parseInt(Deno.env.get("PORT") || "8080");
-const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482"; // المفتاح المطابق لروبلوكس
+const SERVER_KEY = Deno.env.get("ROBLOX_SERVER_KEY") || "NOVA-482";
 
 const app = new Application();
 const router = new Router();
 
-// تخزين بيانات اللاعبين القادمين من سيرفر روبلوكس
 const activeLinks = new Map(); // linkCode -> playerData
 const socketToLink = new Map(); // socketId -> linkCode
 
-// 1. استقبال الـ Presence من سيرفر روبلوكس عبر HTTP POST
+// 1. استقبال الـ Presence من روبلوكس مع طباعة تفصيلية لتشخيص الخطأ
 router.post("/api/rooms/roblox-presence", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
+    console.log("📥 استلام بيانات روبلوكس:", JSON.stringify(body));
+
     const { gameCode, serverKey, players } = body;
 
-    // التحقق من مفتاح الحماية
+    // التحقق من المفتاح (إذا واجهت خطأ، تأكد أن ROBLOX_SERVER_KEY في Deno Deploy يطابق Config في روبلوكس)
     if (serverKey !== SERVER_KEY) {
+      console.warn(`⚠️ مفتاح غير مطابق! القادم: ${serverKey}, المتوقع: ${SERVER_KEY}`);
       ctx.response.status = 403;
       ctx.response.body = { error: "Invalid ServerKey" };
       return;
@@ -31,8 +33,6 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
     }
 
     const now = Date.now();
-
-    // تحديث إحداثيات وحالة كل لاعب
     players.forEach((p) => {
       if (p.linkCode) {
         const existing = activeLinks.get(p.linkCode) || {};
@@ -49,9 +49,9 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
       }
     });
 
-    // حذف اللاعبين المنقطع إرسالهم (أكثر من 15 ثانية)
+    // تنظيف الأكواد القديمة
     for (const [code, data] of activeLinks.entries()) {
-      if (now - data.lastSeen > 15000) {
+      if (now - data.lastSeen > 20000) {
         activeLinks.delete(code);
       }
     }
@@ -59,31 +59,28 @@ router.post("/api/rooms/roblox-presence", async (ctx) => {
     ctx.response.status = 200;
     ctx.response.body = { success: true };
   } catch (err) {
-    console.error("Presence Error:", err);
+    console.error("❌ خطأ في معالجة Presence:", err);
     ctx.response.status = 500;
     ctx.response.body = { error: err.message };
   }
 });
 
-// تفعيل المسارات في Oak
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-// إعداد Socket.io
 const io = new Server({
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 io.on("connection", (socket) => {
-  console.log(`Web client connected: ${socket.id}`);
+  console.log(`🟢 مستخدم ويب متصل: ${socket.id}`);
 
-  // التحقق من الكود المكتوب في الموقع
   socket.on("verify_code", (data, callback) => {
     const code = (data.code || "").trim().toUpperCase();
     const playerData = activeLinks.get(code);
 
     if (!playerData) {
-      return callback({ success: false, message: "الكود غير صحيح أو انتهت صلاحيته." });
+      return callback({ success: false, message: "الكود غير صحيح أو منتهي الصلاحية." });
     }
 
     playerData.socketId = socket.id;
@@ -95,28 +92,29 @@ io.on("connection", (socket) => {
       displayName: playerData.displayName 
     });
 
-    console.log(`Player ${playerData.playerId} linked with socket ${socket.id}`);
+    console.log(`🔗 تم ربط اللاعب ${playerData.playerId} بنجاح.`);
   });
 
   socket.on("disconnect", () => {
     const code = socketToLink.get(socket.id);
     if (code) {
       const playerData = activeLinks.get(code);
-      if (playerData) {
-        playerData.socketId = null;
-      }
+      if (playerData) playerData.socketId = null;
       socketToLink.delete(socket.id);
     }
-    console.log(`Web client disconnected: ${socket.id}`);
+    console.log(`🔴 انقطع اتصال مستخدم الويب: ${socket.id}`);
   });
 });
 
-// التشغيل السليم المتوافق مع Deno Deploy (معالجة طلبات HTTP والـ WebSockets معاً)
 Deno.serve({ port: PORT }, async (req) => {
-  if (req.url.includes("/socket.io/")) {
+  const url = new URL(req.url);
+  
+  // توجيه طلبات socket.io بالشكل الصحيح
+  if (url.pathname.startsWith("/socket.io/")) {
     return io.engine.handleRequest(req);
   }
+
   return await app.handle(req) || new Response("Not Found", { status: 404 });
 });
 
-console.log(`Server running on port ${PORT}`);
+console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
