@@ -2,71 +2,224 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>تحكم صوت الماب</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رووكس - Proximity Voice</title>
     <style>
-        body {
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
             font-family: Tahoma, sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
+        }
+        body {
+            background-color: #131313;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: #1c1c1c;
+            padding: 40px 30px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid #2a2a2a;
             text-align: center;
-            padding-top: 100px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff3b3b;
+            margin-bottom: 20px;
+        }
+        h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 14px;
+            background: #252525;
+            border: 1px solid #383838;
+            color: #fff;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 22px;
+            letter-spacing: 4px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input:focus {
+            border-color: #ff3b3b;
         }
         button {
-            background-color: #3b82f6;
+            background: #ff3b3b;
             color: white;
             border: none;
-            padding: 15px 35px;
-            font-size: 20px;
+            padding: 14px;
+            width: 100%;
+            border-radius: 8px;
             cursor: pointer;
-            border-radius: 12px;
-            transition: 0.2s;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.3s;
         }
         button:hover {
-            background-color: #2563eb;
+            background: #e03232;
         }
-        #status {
+        .secondary-btn {
+            background: #2a2a2a;
+            margin-top: 10px;
+        }
+        .secondary-btn:hover {
+            background: #353535;
+        }
+        .error-msg {
+            color: #ff5555;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+        .hidden {
+            display: none;
+        }
+        .status-badge {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4CAF50;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border: 1px solid rgba(76, 175, 80, 0.2);
+        }
+        .footer-note {
+            font-size: 11px;
+            color: #555;
             margin-top: 25px;
-            font-size: 18px;
         }
     </style>
 </head>
 <body>
 
-    <h1>إدارة ماب بيمش1</h1>
-    <p>اضغط للتحكم في ظهور (VoiceWebsiteText) جوة اللعبة:</p>
-    
-    <button onclick="triggerRoblox()">إظهار النص في الماب</button>
-    <div id="status"></div>
+    <div class="container">
+        <div class="logo">ROVOX 🎙️</div>
 
+        <!-- قسم إدخال الكود -->
+        <div id="login-section">
+            <h2>اربط حسابك بروبلوكس</h2>
+            <p>ادخل الكود المكون من 6 أرقام الظهور أعلى يسار الشاشة في اللعبة لربط المايك والصوت المتقارب.</p>
+            
+            <div class="input-group">
+                <input type="text" id="code-input" placeholder="------" maxlength="6">
+            </div>
+            
+            <button id="connect-btn">ربط الحساب</button>
+            <div id="error-msg" class="error-msg"></div>
+        </div>
+
+        <!-- قسم التحكم بعد الاتصال -->
+        <div id="control-section" class="hidden">
+            <div class="status-badge">متصل بنجاح - المايك يعمل 🟢</div>
+            <p id="user-info" style="color: #bbb; margin-bottom: 20px;"></p>
+            
+            <button id="mic-toggle" class="secondary-btn">كتم الميكروفون 🎤</button>
+            <button id="speaker-toggle" class="secondary-btn">كتم السماعة 🔊</button>
+        </div>
+
+        <div class="footer-note">
+            هذا الموقع يجب أن يبقى مفتوحاً في الخلفية لكي يعمل المايك واللعبة بشكل مباشر.
+        </div>
+    </div>
+
+    <!-- تضمين مكتبة Socket.io والسكربت الخاص بك -->
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        async function triggerRoblox() {
-            const statusDiv = document.getElementById("status");
-            statusDiv.innerText = "جاري إرسال الطلب للسيرفر...";
-            statusDiv.style.color = "#fbbf24";
+        const socket = io();
+        let localStream;
+        let isMuted = false;
+        let isDeafened = false;
 
+        const connectBtn = document.getElementById('connect-btn');
+        const codeInput = document.getElementById('code-input');
+        const loginSection = document.getElementById('login-section');
+        const controlSection = document.getElementById('control-section');
+        const errorMsg = document.getElementById('error-msg');
+        const userInfo = document.getElementById('user-info');
+        const micToggle = document.getElementById('mic-toggle');
+        const speakerToggle = document.getElementById('speaker-toggle');
+
+        connectBtn.onclick = () => {
+            const code = codeInput.value.trim();
+            if (code.length !== 6) {
+                errorMsg.innerText = "الرجاء إدخال الكود المكون من 6 أرقام بشكل صحيح.";
+                return;
+            }
+
+            errorMsg.innerText = "";
+            socket.emit('verify_code', { code, channel: 'default' }, async (response) => {
+                if (response.success) {
+                    loginSection.classList.add('hidden');
+                    controlSection.classList.remove('hidden');
+                    userInfo.innerText = `معرف المستخدم: ${response.userId}`;
+                    
+                    await initAudioEngine();
+                } else {
+                    errorMsg.innerText = response.message || "الكود غير صحيح أو انتهت صلاحيته.";
+                }
+            });
+        };
+
+        async function initAudioEngine() {
             try {
-                const response = await fetch("http://localhost:5000/api/trigger-voice", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: true, noiseSuppression: true } 
                 });
 
-                const data = await response.json();
+                // تقنية الحفاظ على الشاشة نشطة في الخلفية (Keep Alive Trick)
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(20000, audioCtx.currentTime); // تردد عالي غير مسموع
+                gainNode.gain.setValueAtTime(0.00001, audioCtx.currentTime); // كتم الصوت تقريباً
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
 
-                if (data.success) {
-                    statusDiv.innerText = "✅ تم إرسال الإشارة للماب بنجاح!";
-                    statusDiv.style.color = "#4ade80";
-                } else {
-                    statusDiv.innerText = "❌ فشل من السيرفر: " + (data.error || "خطأ غير معروف");
-                    statusDiv.style.color = "#f87171";
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
                 }
-            } catch (error) {
-                statusDiv.innerText = "❌ تعذر الاتصال بالسيرفر الداخلي (تأكد إن node server.js شغال)";
-                statusDiv.style.color = "#f87171";
-                console.error(error);
+            } catch (e) {
+                alert("يرجى السماح بالوصول للميكروفون من متصفحك ليعمل النظام.");
             }
         }
+
+        micToggle.onclick = () => {
+            isMuted = !isMuted;
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+            }
+            micToggle.innerText = isMuted ? "إلغاء كتم الميكروفون ❌" : "كتم الميكروفون 🎤";
+            micToggle.style.background = isMuted ? "#a82222" : "#2a2a2a";
+        };
+
+        speakerToggle.onclick = () => {
+            isDeafened = !isDeafened;
+            document.querySelectorAll('audio').forEach(audio => audio.muted = isDeafened);
+            speakerToggle.innerText = isDeafened ? "إلغاء كتم السماعة ❌" : "كتم السماعة 🔊";
+            speakerToggle.style.background = isDeafened ? "#a82222" : "#2a2a2a";
+        };
     </script>
 </body>
 </html>
